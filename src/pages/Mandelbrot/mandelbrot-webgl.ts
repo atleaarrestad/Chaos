@@ -7,7 +7,7 @@
 /// Julia:      Z₀=center, Zₙ₊₁ = Zₙ²+c;   δₙ₊₁ = (2Zₙ+δₙ)·δₙ,        δ₀=ε
 /// ε = pixel offset from center in complex-plane units (tiny at high zoom).
 ///
-/// Precision ceiling: JS float64 center coordinate precision (~1e-15), well beyond zoom 1e13.
+/// Precision ceiling: JS float64 center coordinate precision (~1e-15), supports zoom up to 1e14.
 ///
 /// Precision fixes applied:
 ///   1. Fallback corrected — centre passed as double-double so c_pixel = centre+eps is precise

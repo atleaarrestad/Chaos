@@ -362,7 +362,8 @@ export default function Mandelbrot() {
       const mouseRe = centerX + (mx - canvas.width  * 0.5) / zoom;
       const mouseIm = centerY + (my - canvas.height * 0.5) / zoom;
       const factor  = e.deltaY < 0 ? 1.15 : 1 / 1.15;
-      const newZoom = Math.max(100, Math.min(1e13, zoom * factor));
+      const maxZoom = useGPURef.current ? 1e14 : 1e13;
+      const newZoom = Math.max(100, Math.min(maxZoom, zoom * factor));
       if (newZoom === zoom) return;
       view.current  = {
         centerX: mouseRe - (mx - canvas.width  * 0.5) / newZoom,
