@@ -18,17 +18,30 @@ function adaptiveMaxIter(zoom: number) {
   return Math.min(2000, Math.max(80, (40 + 18 * Math.log2(zoom)) | 0));
 }
 
-function buildTileList(cw: number, ch: number): Tile[] {
+function buildTileList(cw: number, ch: number, dirty?: { x: number; y: number }): Tile[] {
   const cols = Math.ceil(cw / TILE);
   const rows = Math.ceil(ch / TILE);
   const cx = cols / 2, cy = rows / 2;
   const tiles: (Tile & { _d: number })[] = [];
+
+  // Clean region = the rect of already-correct pixels after accumlated pan (dirty offset)
+  // If dirty.x = 300 (panned right 300px): clean columns are [300, cw], left strip is new
+  // If dirty.x = -300 (panned left 300px): clean columns are [0, cw-300], right strip is new
+  const cleanX1 = dirty ? Math.max(0, dirty.x)        : 0;
+  const cleanX2 = dirty ? Math.min(cw, cw + dirty.x)  : 0;
+  const cleanY1 = dirty ? Math.max(0, dirty.y)        : 0;
+  const cleanY2 = dirty ? Math.min(ch, ch + dirty.y)  : 0;
+
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
+      const tx = col * TILE, ty = row * TILE;
+      const tw = Math.min(TILE, cw - tx), th = Math.min(TILE, ch - ty);
+      // Skip tile if it lies entirely within the clean (already-rendered) region
+      if (dirty && tx >= cleanX1 && tx + tw <= cleanX2 && ty >= cleanY1 && ty + th <= cleanY2) {
+        continue;
+      }
       tiles.push({
-        x: col * TILE, y: row * TILE,
-        w: Math.min(TILE, cw - col * TILE),
-        h: Math.min(TILE, ch - row * TILE),
+        x: tx, y: ty, w: tw, h: th,
         _d: (col + 0.5 - cx) ** 2 + (row + 0.5 - cy) ** 2,
       });
     }
@@ -53,6 +66,10 @@ export default function Mandelbrot() {
   const renderTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dragRef     = useRef<{ x: number; y: number } | null>(null);
   const zoomLabel   = useRef<HTMLSpanElement>(null);
+  // Accumulated pan (px) since the last render started — used to skip clean tiles on drag
+  const panSinceRenderRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  // Zoom level at the last render start — if it changed, all tiles are dirty
+  const renderZoomRef     = useRef<number>(INITIAL.zoom);
 
   // ── helpers ────────────────────────────────────────────────────────────────
 
@@ -73,12 +90,19 @@ export default function Mandelbrot() {
     clearTimer();
   }, [clearTimer]);
 
-  /** Start a fresh full-quality render at the current view. */
-  const startRender = useCallback(() => {
+  /** Start a fresh full-quality render at the current view.
+   *  skipClean=true: skip tiles still correct from the previous render (pure pan only). */
+  const startRender = useCallback((skipClean = false) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     cancelRender();
     if (zoomLabel.current) zoomLabel.current.textContent = fmtZoom(view.current.zoom);
+
+    // Only use dirty filtering when zoom hasn't changed since the last render
+    const sameZoom = view.current.zoom === renderZoomRef.current;
+    const dirty = (skipClean && sameZoom) ? { ...panSinceRenderRef.current } : undefined;
+    panSinceRenderRef.current = { x: 0, y: 0 };
+    renderZoomRef.current = view.current.zoom;
 
     const id = ++renderIdRef.current;
     const w = new Worker(new URL('./mandelbrot.worker.ts', import.meta.url), { type: 'module' });
@@ -92,7 +116,7 @@ export default function Mandelbrot() {
     workerRef.current = w;
 
     w.postMessage({
-      tileList: buildTileList(canvas.width, canvas.height),
+      tileList: buildTileList(canvas.width, canvas.height, dirty),
       canvasW: canvas.width, canvasH: canvas.height,
       ...view.current,
       maxIter: adaptiveMaxIter(view.current.zoom),
@@ -125,6 +149,10 @@ export default function Mandelbrot() {
   }, [syncBack]);
 
   const applyPan = useCallback((dx: number, dy: number) => {
+    panSinceRenderRef.current = {
+      x: panSinceRenderRef.current.x + dx,
+      y: panSinceRenderRef.current.y + dy,
+    };
     const c = canvasRef.current, b = backRef.current;
     if (!c || !b) return;
     const ctx = c.getContext('2d')!;
@@ -213,7 +241,7 @@ export default function Mandelbrot() {
       if (!dragRef.current) return;
       dragRef.current = null;
       canvas.style.cursor = 'crosshair';
-      startRender(); // render immediately on drag release
+      startRender(true); // render immediately — skip tiles still correct from last render
     };
     canvas.addEventListener('mousedown', onDown);
     window.addEventListener('mousemove', onMove);
