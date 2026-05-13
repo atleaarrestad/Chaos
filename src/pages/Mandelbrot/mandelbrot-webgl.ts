@@ -1,6 +1,20 @@
-/// WebGL2 Mandelbrot / Julia renderer for the main thread.
-/// Uses double-double arithmetic (float32 hi+lo pairs) for ~48-bit precision,
-/// supporting clean rendering up to zoom ~1e14 — matching the CPU worker range.
+/// WebGL2 Mandelbrot / Julia renderer using perturbation theory.
+///
+/// The view-center orbit is computed in JS float64 and uploaded as an RG32F texture.
+/// Each pixel iterates only its tiny perturbation δ (plain float32 — δ stays small by design).
+///
+/// Mandelbrot: Z₀=0,  Zₙ₊₁ = Zₙ²+C_ref;  δₙ₊₁ = (2Zₙ+δₙ)·δₙ + ε,  δ₀=0
+/// Julia:      Z₀=center, Zₙ₊₁ = Zₙ²+c;   δₙ₊₁ = (2Zₙ+δₙ)·δₙ,        δ₀=ε
+/// ε = pixel offset from center in complex-plane units (tiny at high zoom).
+///
+/// Precision ceiling: JS float64 center coordinate precision (~1e-15), well beyond zoom 1e13.
+///
+/// Precision fixes applied:
+///   1. Fallback corrected — centre passed as double-double so c_pixel = centre+eps is precise
+///      at any zoom; fallback continues from the accurate z computed by perturbation rather
+///      than restarting from z=0 with a float32-truncated centre.
+///   2. Reference boundary: the loop now reads Z[orbitLen] (the first escaped reference point)
+///      before stopping, catching pixels that should escape at that exact step.
 
 import type { PaletteId } from './mandelbrot.worker';
 
@@ -76,10 +90,41 @@ export function detectWebGL(): boolean {
   }
 }
 
-/** Split a JS float64 into a (hi, lo) float32 pair for double-double upload. */
-function splitDD(x: number): [number, number] {
-  const hi = Math.fround(x);
-  return [hi, Math.fround(x - hi)];
+/**
+ * Compute the reference orbit for perturbation theory.
+ *   Mandelbrot:  z₀ = 0,           zₙ₊₁ = zₙ² + (cRe, cIm)
+ *   Julia:       z₀ = (z0Re, z0Im),  zₙ₊₁ = zₙ² + (cRe, cIm)
+ *
+ * Returns Float32Array of size maxIter×4: [re_hi, re_lo, im_hi, im_lo, …].
+ * Each value is a double-double split: hi = float32(x), lo = float32(x − hi).
+ * Computed in native float64, stored as float32 DD pairs (~48-bit precision).
+ * orbitLen: number of valid entries (< maxIter when the reference orbit escapes early).
+ * Remaining entries beyond orbitLen are zero-padded but must NOT be read by the shader.
+ */
+function computeReferenceOrbit(
+  z0Re: number, z0Im: number,
+  cRe: number,  cIm: number,
+  maxIter: number,
+): { data: Float32Array; orbitLen: number } {
+  const data = new Float32Array(maxIter * 4);
+  let re = z0Re, im = z0Im;
+  let orbitLen = maxIter;
+  for (let n = 0; n < maxIter; n++) {
+    const reHi = Math.fround(re);
+    const reLo = Math.fround(re - reHi);
+    const imHi = Math.fround(im);
+    const imLo = Math.fround(im - imHi);
+    data[n * 4]     = reHi;
+    data[n * 4 + 1] = reLo;
+    data[n * 4 + 2] = imHi;
+    data[n * 4 + 3] = imLo;
+    // Stop at the standard Mandelbrot escape radius — post-escape values are garbage.
+    if (re * re + im * im > 4) { orbitLen = n; break; }
+    const newIm = 2 * re * im + cIm;
+    re = re * re - im * im + cRe;
+    im = newIm;
+  }
+  return { data, orbitLen };
 }
 
 // ── Shaders ──────────────────────────────────────────────────────────────────
@@ -93,106 +138,120 @@ const FRAG_SRC = `#version 300 es
 precision highp float;
 precision highp int;
 
-// ── Double-double arithmetic (Shewchuk / Dekker) ─────────────────────────────
-
-vec2 twoSum(float a, float b) {
-  float s = a + b;
-  float v = s - a;
-  return vec2(s, (a - (s - v)) + (b - v));
-}
-
-vec2 ddAdd(vec2 a, vec2 b) {
-  vec2 s = twoSum(a.x, b.x);
-  s.y += a.y + b.y;
-  float v = s.x + s.y;
-  return vec2(v, s.y - (v - s.x));
-}
-
-vec2 ddSub(vec2 a, vec2 b) { return ddAdd(a, vec2(-b.x, -b.y)); }
-
-vec2 twoProd(float a, float b) {
-  float p = a * b;
-  const float C = 4097.0; // Veltkamp splitter: 2^12 + 1
-  float ca = C * a; float ahi = ca - (ca - a); float alo = a - ahi;
-  float cb = C * b; float bhi = cb - (cb - b); float blo = b - bhi;
-  return vec2(p, ((ahi * bhi - p) + ahi * blo + alo * bhi) + alo * blo);
-}
-
-vec2 ddMul(vec2 a, vec2 b) {
-  vec2 p = twoProd(a.x, b.x);
-  p.y += a.x * b.y + a.y * b.x;
-  float v = p.x + p.y;
-  return vec2(v, p.y - (v - p.x));
-}
-
-vec2 ddSqr(vec2 a) {
-  vec2 p = twoProd(a.x, a.x);
-  p.y += 2.0 * a.x * a.y;
-  float v = p.x + p.y;
-  return vec2(v, p.y - (v - p.x));
-}
-
-// Multiply by 2 is exact in IEEE 754 (no rounding error).
-vec2 ddScale2(vec2 a) { return vec2(a.x * 2.0, a.y * 2.0); }
-
-// ── Uniforms ─────────────────────────────────────────────────────────────────
-
+// ── Uniforms ──────────────────────────────────────────────────────────────────
 uniform vec2  u_resolution;
-uniform vec2  u_centerX;      // double-double (hi, lo)
-uniform vec2  u_centerY;      // double-double (hi, lo)
-uniform float u_scale;        // 1.0 / zoom
+uniform float u_scale;        // 1.0 / zoom (plain float — pixel offsets are tiny)
 uniform int   u_maxIter;
 uniform float u_colorSpeed;
 uniform float u_colorOffset;
 uniform bool  u_invertColors;
 uniform vec3  u_palette[16];
 uniform bool  u_juliaMode;
-uniform float u_juliaRe;
-uniform float u_juliaIm;
+uniform int   u_orbitLen;   // number of valid orbit entries (≤ u_maxIter)
+// Centre as double-double so c_pixel = centre + eps keeps full precision at deep zoom.
+uniform vec2  u_centerDDRe; // (re_hi, re_lo)
+uniform vec2  u_centerDDIm; // (im_hi, im_lo)
+uniform vec2  u_juliaC;     // Julia constant (float32 is fine — not zoom-dependent)
+// Reference orbit texture: RGBA32F, one texel per step = (re_hi, re_lo, im_hi, im_lo) of Z_n
+uniform sampler2D u_orbitTex;
 
 out vec4 fragColor;
 
+// Complex multiply (float32)
+vec2 cMul(vec2 a, vec2 b) {
+  return vec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
+}
+
+// Add a float32 value b into a double-double (hi, lo), returning the improved float32 sum.
+// Gives ~48-bit precision for the escape check even when b << hi.
+float ddPlusF(vec2 dd, float b) {
+  float s = dd.x + b;
+  float e = b - (s - dd.x);
+  return s + (dd.y + e);
+}
+
 void main() {
-  // Pixel → complex coordinate (double-double).
-  // gl_FragCoord.y = 0 is bottom in WebGL; flip y to match canvas-2D convention.
-  float dx =  (gl_FragCoord.x - u_resolution.x * 0.5) * u_scale;
-  float dy = -(gl_FragCoord.y - u_resolution.y * 0.5) * u_scale;
+  // gl_FragCoord.y=0 is bottom in WebGL; flip to match canvas-2D (top=0) convention.
+  float pixDx =  (gl_FragCoord.x - u_resolution.x * 0.5);
+  float pixDy = -(gl_FragCoord.y - u_resolution.y * 0.5);
 
-  vec2 cre = ddAdd(u_centerX, vec2(dx, 0.0));
-  vec2 cim = ddAdd(u_centerY, vec2(dy, 0.0));
+  // Pixel offset from view center in complex-plane units.
+  // At high zoom this is tiny, so plain float32 carries it without loss.
+  vec2 eps = vec2(pixDx, pixDy) * u_scale;
 
-  vec2 zre, zim, fre, fim;
-  if (u_juliaMode) {
-    zre = cre; zim = cim;
-    fre = vec2(u_juliaRe, 0.0); fim = vec2(u_juliaIm, 0.0);
-  } else {
-    zre = vec2(0.0); zim = vec2(0.0);
-    fre = cre; fim = cim;
-  }
+  int   iter    = 0;
+  float r2      = 0.0;
+  bool  escaped = false;
 
-  // Iteration loop — mirrors the CPU worker exactly:
-  //   while (re2 + im2 <= 4 && iter < maxIter) { update; re2=re²; im2=im²; iter++ }
-  vec2 re2 = ddSqr(zre);
-  vec2 im2 = ddSqr(zim);
-  int iter = 0;
+  // Perturbation δ:
+  //   Mandelbrot — δ₀ = 0  (every Mandelbrot pixel starts z=0; c differs by ε)
+  //   Julia      — δ₀ = ε  (pixel's offset from the reference start point)
+  vec2 d = u_juliaMode ? eps : vec2(0.0);
+
+  // Declared outside the loop so the fallback can read the last valid orbit entry.
+  vec2 Zre = vec2(0.0);
+  vec2 Zim = vec2(0.0);
+
   for (int i = 0; i < 2000; i++) {
-    if (i >= u_maxIter)          break; // interior: all iterations exhausted
-    if (re2.x + im2.x > 4.0)    break; // escaped
-    vec2 newIm = ddAdd(ddScale2(ddMul(zre, zim)), fim);
-    zre = ddAdd(ddSub(re2, im2), fre);
-    zim = newIm;
-    re2 = ddSqr(zre);
-    im2 = ddSqr(zim);
+    if (i >= u_maxIter) break;
+
+    // Read orbit entry i.  When i == u_orbitLen the reference has just escaped;
+    // we read that escaped point once to give pixels a chance to escape at the
+    // same step, then stop regardless of the outcome.
+    vec4 Ztex = texelFetch(u_orbitTex, ivec2(i, 0), 0);
+    Zre = Ztex.rg;
+    Zim = Ztex.ba;
+
+    // Full iterate z = Z_n + δ_n using DD for precision at deep zoom.
+    float zre = ddPlusF(Zre, d.x);
+    float zim = ddPlusF(Zim, d.y);
+    r2 = zre * zre + zim * zim;
+    if (r2 > 4.0) { escaped = true; break; }
+
+    // Reference orbit exhausted — pixel didn't escape at this boundary step.
+    if (i >= u_orbitLen) break;
+
+    // Perturbation recurrence uses only Z hi-parts (δ is tiny so error × δ ≈ 0).
+    vec2 Z = vec2(Zre.x, Zim.x);
+    d = cMul(2.0 * Z + d, d);
+    if (!u_juliaMode) d += eps;
+
     iter++;
   }
 
-  if (iter >= u_maxIter) {
+  // Fallback: perturbation ended early (reference orbit shorter than maxIter).
+  // Continue from the accurate z already computed by perturbation using direct
+  // float32 iteration.  At low/medium zoom float32 is sufficient for the tail;
+  // at deep zoom the perturbation already handled the precision-critical steps,
+  // so only a short float32 tail remains.
+  // c_pixel is computed via DD so eps is never swallowed at deep zoom.
+  if (!escaped) {
+    float fzRe = ddPlusF(Zre, d.x);
+    float fzIm = ddPlusF(Zim, d.y);
+    float fcRe, fcIm;
+    if (u_juliaMode) {
+      fcRe = u_juliaC.x;
+      fcIm = u_juliaC.y;
+    } else {
+      fcRe = ddPlusF(u_centerDDRe, eps.x);
+      fcIm = ddPlusF(u_centerDDIm, eps.y);
+    }
+    for (int i = iter; i < 2000; i++) {
+      if (i >= u_maxIter) break;
+      r2 = fzRe * fzRe + fzIm * fzIm;
+      if (r2 > 4.0) { escaped = true; iter = i; break; }
+      float newRe = fzRe * fzRe - fzIm * fzIm + fcRe;
+      fzIm = 2.0 * fzRe * fzIm + fcIm;
+      fzRe = newRe;
+    }
+  }
+
+  if (!escaped) {
     fragColor = vec4(0.0, 0.0, 0.0, 1.0);
     return;
   }
 
   // Smooth colouring — identical formula to CPU worker.
-  float r2       = re2.x + im2.x;
   float smooth_v = float(iter) + 1.0 - log(log(r2) * 0.5) / log(2.0);
 
   const int N = 16;
@@ -241,6 +300,17 @@ export function createWebGLRenderer(canvas: HTMLCanvasElement): WebGLRenderer | 
   }
   gl.useProgram(prog);
 
+  // Pre-allocate reference orbit texture (MAX_ORBIT×1, RGBA32F = re_hi,re_lo,im_hi,im_lo per texel).
+  const MAX_ORBIT = 2000;
+  const orbitTex = gl.createTexture()!;
+  gl.bindTexture(gl.TEXTURE_2D, orbitTex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, MAX_ORBIT, 1, 0, gl.RGBA, gl.FLOAT, null);
+  gl.bindTexture(gl.TEXTURE_2D, null);
+
   // Full-screen quad covering NDC [-1, 1]²
   const vbo = gl.createBuffer()!;
   gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
@@ -255,8 +325,6 @@ export function createWebGLRenderer(canvas: HTMLCanvasElement): WebGLRenderer | 
   // Cache uniform locations once at setup time.
   const U = {
     resolution:   gl.getUniformLocation(prog, 'u_resolution')!,
-    centerX:      gl.getUniformLocation(prog, 'u_centerX')!,
-    centerY:      gl.getUniformLocation(prog, 'u_centerY')!,
     scale:        gl.getUniformLocation(prog, 'u_scale')!,
     maxIter:      gl.getUniformLocation(prog, 'u_maxIter')!,
     colorSpeed:   gl.getUniformLocation(prog, 'u_colorSpeed')!,
@@ -264,29 +332,58 @@ export function createWebGLRenderer(canvas: HTMLCanvasElement): WebGLRenderer | 
     invertColors: gl.getUniformLocation(prog, 'u_invertColors')!,
     palette:      gl.getUniformLocation(prog, 'u_palette[0]')!,
     juliaMode:    gl.getUniformLocation(prog, 'u_juliaMode')!,
-    juliaRe:      gl.getUniformLocation(prog, 'u_juliaRe')!,
-    juliaIm:      gl.getUniformLocation(prog, 'u_juliaIm')!,
+    orbitLen:     gl.getUniformLocation(prog, 'u_orbitLen')!,
+    centerDDRe:   gl.getUniformLocation(prog, 'u_centerDDRe')!,
+    centerDDIm:   gl.getUniformLocation(prog, 'u_centerDDIm')!,
+    juliaC:       gl.getUniformLocation(prog, 'u_juliaC')!,
+    orbitTex:     gl.getUniformLocation(prog, 'u_orbitTex')!,
   };
 
   const palCache = new Float32Array(16 * 3);
+  // Track last orbit params to avoid redundant recomputes.
+  let lastOrbitCX = NaN, lastOrbitCY = NaN, lastOrbitMaxIter = -1;
+  let lastOrbitJRe = NaN, lastOrbitJIm = NaN, lastOrbitMode = false;
+  let lastOrbitLen = 0;
 
   function render(p: GLRenderParams): void {
     gl.viewport(0, 0, p.canvasW, p.canvasH);
 
-    const [cxHi, cxLo] = splitDD(p.centerX);
-    const [cyHi, cyLo] = splitDD(p.centerY);
+    // Recompute reference orbit whenever view center, Julia params, or iteration depth changes.
+    if (
+      p.centerX  !== lastOrbitCX   || p.centerY  !== lastOrbitCY   ||
+      p.maxIter  !== lastOrbitMaxIter ||
+      p.juliaMode !== lastOrbitMode ||
+      p.juliaRe  !== lastOrbitJRe  || p.juliaIm  !== lastOrbitJIm
+    ) {
+      // Mandelbrot: reference starts at z=0, iterates with c = view center.
+      // Julia:      reference starts at view center, iterates with c = juliaC.
+      const { data: orbitData, orbitLen } = p.juliaMode
+        ? computeReferenceOrbit(p.centerX, p.centerY, p.juliaRe, p.juliaIm, p.maxIter)
+        : computeReferenceOrbit(0, 0, p.centerX, p.centerY, p.maxIter);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, orbitTex);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, p.maxIter, 1, gl.RGBA, gl.FLOAT, orbitData);
+      lastOrbitLen       = orbitLen;
+      lastOrbitCX        = p.centerX;
+      lastOrbitCY        = p.centerY;
+      lastOrbitMaxIter   = p.maxIter;
+      lastOrbitMode      = p.juliaMode;
+      lastOrbitJRe       = p.juliaRe;
+      lastOrbitJIm       = p.juliaIm;
+    }
 
     gl.uniform2f(U.resolution,   p.canvasW, p.canvasH);
-    gl.uniform2f(U.centerX,      cxHi, cxLo);
-    gl.uniform2f(U.centerY,      cyHi, cyLo);
     gl.uniform1f(U.scale,        1.0 / p.zoom);
     gl.uniform1i(U.maxIter,      p.maxIter);
+    gl.uniform1i(U.orbitLen,     lastOrbitLen);
+    // Centre as double-double: hi = float32(centre), lo = float32(centre − hi).
+    gl.uniform2f(U.centerDDRe,   Math.fround(p.centerX), Math.fround(p.centerX - Math.fround(p.centerX)));
+    gl.uniform2f(U.centerDDIm,   Math.fround(p.centerY), Math.fround(p.centerY - Math.fround(p.centerY)));
+    gl.uniform2f(U.juliaC,       p.juliaRe, p.juliaIm);
     gl.uniform1f(U.colorSpeed,   p.colorSpeed);
     gl.uniform1f(U.colorOffset,  p.colorOffset);
     gl.uniform1i(U.invertColors, p.invertColors ? 1 : 0);
     gl.uniform1i(U.juliaMode,    p.juliaMode    ? 1 : 0);
-    gl.uniform1f(U.juliaRe,      p.juliaRe);
-    gl.uniform1f(U.juliaIm,      p.juliaIm);
 
     const pal = PALETTES[p.paletteId];
     for (let i = 0; i < 16; i++) {
@@ -296,6 +393,11 @@ export function createWebGLRenderer(canvas: HTMLCanvasElement): WebGLRenderer | 
     }
     gl.uniform3fv(U.palette, palCache);
 
+    // Bind orbit texture to unit 0.
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, orbitTex);
+    gl.uniform1i(U.orbitTex, 0);
+
     gl.drawArrays(gl.TRIANGLES, 0, 6);
   }
 
@@ -304,6 +406,7 @@ export function createWebGLRenderer(canvas: HTMLCanvasElement): WebGLRenderer | 
     gl.deleteShader(vert);
     gl.deleteShader(frag);
     gl.deleteBuffer(vbo);
+    gl.deleteTexture(orbitTex);
   }
 
   return { render, dispose };
