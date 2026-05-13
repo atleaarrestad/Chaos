@@ -212,8 +212,8 @@ export default function Mandelbrot() {
       e.preventDefault();
       const rect    = canvas.getBoundingClientRect();
       const dpr     = canvas.width / rect.width;
-      const mx      = (e.clientX - rect.left) * dpr;
-      const my      = (e.clientY - rect.top)  * dpr;
+      const mx      = Math.round((e.clientX - rect.left) * dpr);
+      const my      = Math.round((e.clientY - rect.top)  * dpr);
       const { centerX, centerY, zoom } = view.current;
       const mouseRe = centerX + (mx - canvas.width  * 0.5) / zoom;
       const mouseIm = centerY + (my - canvas.height * 0.5) / zoom;
@@ -247,8 +247,10 @@ export default function Mandelbrot() {
       if (!dragRef.current) return;
       const rect = canvas.getBoundingClientRect();
       const dpr  = canvas.width / rect.width;
-      const dx   = (e.clientX - dragRef.current.x) * dpr;
-      const dy   = (e.clientY - dragRef.current.y) * dpr;
+      // Round to integers: keeps canvas pixel shift, panSinceRenderRef, and view math
+      // all in sync — prevents sub-pixel drift that causes tile seams on the clean boundary.
+      const dx   = Math.round((e.clientX - dragRef.current.x) * dpr);
+      const dy   = Math.round((e.clientY - dragRef.current.y) * dpr);
       dragRef.current = { x: e.clientX, y: e.clientY };
       const { centerX, centerY, zoom } = view.current;
       view.current = { centerX: centerX - dx / zoom, centerY: centerY - dy / zoom, zoom };
