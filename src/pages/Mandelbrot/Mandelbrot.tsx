@@ -2,8 +2,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import styles from './Mandelbrot.module.css';
 
 interface View { centerX: number; centerY: number; zoom: number; }
-type Stage = 'fast' | 'full';
-interface Tile { x: number; y: number; w: number; h: number; }
+interface Tile  { x: number; y: number; w: number; h: number; }
 interface TileResult {
   buf: Uint8ClampedArray;
   id: number;
@@ -13,20 +12,17 @@ interface TileResult {
 
 const INITIAL: View = { centerX: -0.5, centerY: 0, zoom: 250 };
 const TILE = 256;
+const RENDER_DELAY = 300; // ms idle before starting render
 
 function adaptiveMaxIter(zoom: number) {
   return Math.min(2000, Math.max(80, (40 + 18 * Math.log2(zoom)) | 0));
-}
-function stageMaxIter(zoom: number, stage: Stage) {
-  const full = adaptiveMaxIter(zoom);
-  return stage === 'fast' ? Math.max(65, (full * 0.6) | 0) : full;
 }
 
 function buildTileList(cw: number, ch: number): Tile[] {
   const cols = Math.ceil(cw / TILE);
   const rows = Math.ceil(ch / TILE);
   const cx = cols / 2, cy = rows / 2;
-  const tiles = [];
+  const tiles: (Tile & { _d: number })[] = [];
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
       tiles.push({
@@ -49,69 +45,68 @@ function fmtZoom(zoom: number): string {
 }
 
 export default function Mandelbrot() {
-  const canvasRef  = useRef<HTMLCanvasElement>(null);
-  const backRef    = useRef<HTMLCanvasElement | null>(null);
-  const view       = useRef<View>({ ...INITIAL });
-  const workerRef  = useRef<Worker | null>(null);
+  const canvasRef   = useRef<HTMLCanvasElement>(null);
+  const backRef     = useRef<HTMLCanvasElement | null>(null);
+  const view        = useRef<View>({ ...INITIAL });
+  const workerRef   = useRef<Worker | null>(null);
   const renderIdRef = useRef(0);
-  const renderStageRef = useRef<Stage>('full');
-  const fastTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const fullTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const dragRef    = useRef<{ x: number; y: number } | null>(null);
-  const zoomLabel  = useRef<HTMLSpanElement>(null);
+  const renderTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dragRef     = useRef<{ x: number; y: number } | null>(null);
+  const zoomLabel   = useRef<HTMLSpanElement>(null);
+
+  // ── helpers ────────────────────────────────────────────────────────────────
 
   const syncBack = useCallback(() => {
     const c = canvasRef.current, b = backRef.current;
     if (c && b) b.getContext('2d')!.drawImage(c, 0, 0);
   }, []);
 
-  const drawTile = useCallback((r: TileResult) => {
-    const c = canvasRef.current, b = backRef.current;
-    if (!c || !b) return;
-    const img = new ImageData(new Uint8ClampedArray(r.buf.buffer as ArrayBuffer), r.tileW, r.tileH);
-    c.getContext('2d')!.putImageData(img, r.tileX, r.tileY);
-    // Only update backCanvas from full-quality tiles — keeps the zoom source clean
-    if (renderStageRef.current === 'full') {
-      b.getContext('2d')!.putImageData(img, r.tileX, r.tileY);
-    }
+  const clearTimer = useCallback(() => {
+    if (renderTimer.current) { clearTimeout(renderTimer.current); renderTimer.current = null; }
   }, []);
 
-  const spawnWorker = useCallback(() => {
+  /** Kill any running render immediately. In-flight worker messages are dropped via renderId. */
+  const cancelRender = useCallback(() => {
     workerRef.current?.terminate();
-    const w = new Worker(new URL('./mandelbrot.worker.ts', import.meta.url), { type: 'module' });
-    w.onmessage = (e: MessageEvent<TileResult>) => {
-      if (e.data.id !== renderIdRef.current) return;
-      drawTile(e.data);
-    };
-    workerRef.current = w;
-  }, [drawTile]);
+    workerRef.current = null;
+    renderIdRef.current++;
+    clearTimer();
+  }, [clearTimer]);
 
-  const startRender = useCallback((stage: Stage) => {
+  /** Start a fresh full-quality render at the current view. */
+  const startRender = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    spawnWorker();
-    renderStageRef.current = stage;
-    const id = ++renderIdRef.current;
+    cancelRender();
     if (zoomLabel.current) zoomLabel.current.textContent = fmtZoom(view.current.zoom);
-    workerRef.current!.postMessage({
+
+    const id = ++renderIdRef.current;
+    const w = new Worker(new URL('./mandelbrot.worker.ts', import.meta.url), { type: 'module' });
+    w.onmessage = (e: MessageEvent<TileResult>) => {
+      if (e.data.id !== id) return;
+      const r = e.data;
+      const img = new ImageData(new Uint8ClampedArray(r.buf.buffer as ArrayBuffer), r.tileW, r.tileH);
+      canvasRef.current?.getContext('2d')!.putImageData(img, r.tileX, r.tileY);
+      backRef.current?.getContext('2d')!.putImageData(img, r.tileX, r.tileY);
+    };
+    workerRef.current = w;
+
+    w.postMessage({
       tileList: buildTileList(canvas.width, canvas.height),
       canvasW: canvas.width, canvasH: canvas.height,
       ...view.current,
-      maxIter: stageMaxIter(view.current.zoom, stage),
+      maxIter: adaptiveMaxIter(view.current.zoom),
       id,
     });
-  }, [spawnWorker]);
+  }, [cancelRender]);
 
-  const clearTimers = useCallback(() => {
-    if (fastTimer.current) { clearTimeout(fastTimer.current); fastTimer.current = null; }
-    if (fullTimer.current) { clearTimeout(fullTimer.current); fullTimer.current = null; }
-  }, []);
-
+  /** Schedule a render after the user stops interacting. */
   const scheduleRender = useCallback(() => {
-    clearTimers();
-    fastTimer.current = setTimeout(() => startRender('fast'), 150);
-    fullTimer.current = setTimeout(() => startRender('full'), 650);
-  }, [startRender, clearTimers]);
+    clearTimer();
+    renderTimer.current = setTimeout(startRender, RENDER_DELAY);
+  }, [startRender, clearTimer]);
+
+  // ── canvas transforms (instant, no worker) ─────────────────────────────────
 
   const applyZoom = useCallback((factor: number, mx: number, my: number) => {
     const c = canvasRef.current, b = backRef.current;
@@ -140,11 +135,12 @@ export default function Mandelbrot() {
     syncBack();
   }, [syncBack]);
 
+  // ── lifecycle ──────────────────────────────────────────────────────────────
+
   useEffect(() => {
     backRef.current = document.createElement('canvas');
-    spawnWorker();
-    return () => { workerRef.current?.terminate(); clearTimers(); };
-  }, [spawnWorker, clearTimers]);
+    return () => { cancelRender(); };
+  }, [cancelRender]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -152,16 +148,17 @@ export default function Mandelbrot() {
     const ro = new ResizeObserver(() => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       const rect = canvas.getBoundingClientRect();
-      const cw = (rect.width  * dpr) | 0;
-      const ch = (rect.height * dpr) | 0;
-      canvas.width = cw; canvas.height = ch;
+      canvas.width  = (rect.width  * dpr) | 0;
+      canvas.height = (rect.height * dpr) | 0;
       const back = backRef.current;
-      if (back) { back.width = cw; back.height = ch; }
-      startRender('full');
+      if (back) { back.width = canvas.width; back.height = canvas.height; }
+      startRender();
     });
     ro.observe(canvas);
     return () => ro.disconnect();
   }, [startRender]);
+
+  // ── wheel ──────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -182,12 +179,15 @@ export default function Mandelbrot() {
         centerY: mouseIm - (my - canvas.height * 0.5) / newZoom,
         zoom: newZoom,
       };
+      cancelRender();   // stop any running render immediately
       applyZoom(factor, mx, my);
-      scheduleRender();
+      scheduleRender(); // restart countdown
     };
     canvas.addEventListener('wheel', onWheel, { passive: false });
     return () => canvas.removeEventListener('wheel', onWheel);
-  }, [applyZoom, scheduleRender]);
+  }, [applyZoom, scheduleRender, cancelRender]);
+
+  // ── drag ───────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -195,7 +195,7 @@ export default function Mandelbrot() {
     const onDown = (e: MouseEvent) => {
       dragRef.current = { x: e.clientX, y: e.clientY };
       canvas.style.cursor = 'grabbing';
-      clearTimers();
+      cancelRender();
     };
     const onMove = (e: MouseEvent) => {
       if (!dragRef.current) return;
@@ -212,8 +212,7 @@ export default function Mandelbrot() {
       if (!dragRef.current) return;
       dragRef.current = null;
       canvas.style.cursor = 'crosshair';
-      clearTimers();
-      startRender('full');
+      startRender(); // render immediately on drag release
     };
     canvas.addEventListener('mousedown', onDown);
     window.addEventListener('mousemove', onMove);
@@ -223,13 +222,14 @@ export default function Mandelbrot() {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup',   onUp);
     };
-  }, [applyPan, startRender, clearTimers]);
+  }, [applyPan, startRender, cancelRender]);
+
+  // ── reset ──────────────────────────────────────────────────────────────────
 
   const reset = useCallback(() => {
     view.current = { ...INITIAL };
-    clearTimers();
-    startRender('full');
-  }, [startRender, clearTimers]);
+    startRender();
+  }, [startRender]);
 
   return (
     <div className={styles.container}>
@@ -240,7 +240,7 @@ export default function Mandelbrot() {
           <span ref={zoomLabel} className={styles.hudZoom}>1.0&times;</span>
         </div>
         <div className={styles.hudRight}>
-          <span className={styles.hudHint}>scroll to zoom · drag to pan</span>
+          <span className={styles.hudHint}>scroll to zoom &middot; drag to pan</span>
           <button className={styles.resetBtn} type="button" onClick={reset}>Reset</button>
         </div>
       </div>
