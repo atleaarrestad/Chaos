@@ -19,7 +19,7 @@ function adaptiveMaxIter(zoom: number) {
 }
 function stageMaxIter(zoom: number, stage: Stage) {
   const full = adaptiveMaxIter(zoom);
-  return stage === 'fast' ? Math.max(30, (full * 0.28) | 0) : full;
+  return stage === 'fast' ? Math.max(65, (full * 0.6) | 0) : full;
 }
 
 function buildTileList(cw: number, ch: number): Tile[] {
@@ -54,6 +54,7 @@ export default function Mandelbrot() {
   const view       = useRef<View>({ ...INITIAL });
   const workerRef  = useRef<Worker | null>(null);
   const renderIdRef = useRef(0);
+  const renderStageRef = useRef<Stage>('full');
   const fastTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fullTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dragRef    = useRef<{ x: number; y: number } | null>(null);
@@ -69,7 +70,10 @@ export default function Mandelbrot() {
     if (!c || !b) return;
     const img = new ImageData(new Uint8ClampedArray(r.buf.buffer as ArrayBuffer), r.tileW, r.tileH);
     c.getContext('2d')!.putImageData(img, r.tileX, r.tileY);
-    b.getContext('2d')!.putImageData(img, r.tileX, r.tileY);
+    // Only update backCanvas from full-quality tiles — keeps the zoom source clean
+    if (renderStageRef.current === 'full') {
+      b.getContext('2d')!.putImageData(img, r.tileX, r.tileY);
+    }
   }, []);
 
   const spawnWorker = useCallback(() => {
@@ -86,6 +90,7 @@ export default function Mandelbrot() {
     const canvas = canvasRef.current;
     if (!canvas) return;
     spawnWorker();
+    renderStageRef.current = stage;
     const id = ++renderIdRef.current;
     if (zoomLabel.current) zoomLabel.current.textContent = fmtZoom(view.current.zoom);
     workerRef.current!.postMessage({
