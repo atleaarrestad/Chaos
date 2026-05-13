@@ -86,5 +86,5 @@ self.onmessage = (e: MessageEvent<RenderMsg>) => {
     }
   }
 
-  self.postMessage({ buf, id }, [buf.buffer] as unknown as Transferable[]);
+  self.postMessage({ buf, id, width, height }, [buf.buffer] as unknown as Transferable[]);
 };

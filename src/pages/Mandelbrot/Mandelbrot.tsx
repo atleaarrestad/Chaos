@@ -7,12 +7,15 @@ interface View {
   zoom: number;
 }
 
-const INITIAL: View = { centerX: -0.5, centerY: 0, zoom: 250 };
+type Quality = 'coarse' | 'full';
 
-/** Scale max-iterations with zoom depth so detail keeps appearing. */
-function calcMaxIter(zoom: number, quality: 'preview' | 'full'): number {
-  const full = Math.min(2000, Math.max(80, Math.floor(40 + 18 * Math.log2(zoom))));
-  return quality === 'preview' ? Math.max(40, (full * 0.25) | 0) : full;
+const INITIAL: View = { centerX: -0.5, centerY: 0, zoom: 250 };
+/** How many canvas pixels map to 1 render pixel in coarse mode. */
+const COARSE_SCALE = 4;
+
+function calcMaxIter(zoom: number, quality: Quality): number {
+  if (quality === 'coarse') return 28;
+  return Math.min(2000, Math.max(80, Math.floor(40 + 18 * Math.log2(zoom))));
 }
 
 function fmtZoom(zoom: number): string {
@@ -22,70 +25,81 @@ function fmtZoom(zoom: number): string {
   return f.toExponential(2) + '×';
 }
 
+function createWorker() {
+  return new Worker(new URL('./mandelbrot.worker.ts', import.meta.url), { type: 'module' });
+}
+
 export default function Mandelbrot() {
   const canvasRef    = useRef<HTMLCanvasElement>(null);
   const view         = useRef<View>({ ...INITIAL });
   const workerRef    = useRef<Worker | null>(null);
   const renderIdRef  = useRef(0);
-  const rafRef       = useRef(0);
   const timerRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dragRef      = useRef<{ x: number; y: number } | null>(null);
   const zoomLabelRef = useRef<HTMLSpanElement>(null);
 
-  // ── Post a render request to the worker ────────────────────────────────
-  const render = useCallback((quality: 'preview' | 'full') => {
-    cancelAnimationFrame(rafRef.current);
-    rafRef.current = requestAnimationFrame(() => {
-      const canvas = canvasRef.current;
-      const worker = workerRef.current;
-      if (!canvas || !worker) return;
+  // ── Core render: terminate any in-flight job, spin up fresh worker ─────
+  const render = useCallback((quality: Quality) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
 
-      const { centerX, centerY, zoom } = view.current;
-      const id = ++renderIdRef.current;
-
-      if (zoomLabelRef.current) zoomLabelRef.current.textContent = fmtZoom(zoom);
-
-      worker.postMessage({
-        width:   canvas.width,
-        height:  canvas.height,
-        centerX, centerY, zoom,
-        maxIter: calcMaxIter(zoom, quality),
-        id,
-      });
-    });
-  }, []);
-
-  // ── After interaction stops, upgrade to full quality ───────────────────
-  const scheduleFullRender = useCallback(() => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => render('full'), 220);
-  }, [render]);
-
-  // ── Spin up the worker ─────────────────────────────────────────────────
-  useEffect(() => {
-    const worker = new Worker(
-      new URL('./mandelbrot.worker.ts', import.meta.url),
-      { type: 'module' },
-    );
+    // Cancel previous computation immediately (no waiting for it to finish)
+    if (workerRef.current) workerRef.current.terminate();
+    const worker = createWorker();
     workerRef.current = worker;
 
-    worker.onmessage = (e: MessageEvent<{ buf: Uint8ClampedArray; id: number }>) => {
-      // Discard stale renders
-      if (e.data.id !== renderIdRef.current) return;
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const ctx = canvas.getContext('2d');
-      ctx?.putImageData(new ImageData(e.data.buf, canvas.width, canvas.height), 0, 0);
+    const { centerX, centerY, zoom } = view.current;
+    const id = ++renderIdRef.current;
+
+    if (zoomLabelRef.current) zoomLabelRef.current.textContent = fmtZoom(zoom);
+
+    const scale   = quality === 'coarse' ? COARSE_SCALE : 1;
+    const renderW = Math.max(1, Math.floor(canvas.width  / scale));
+    const renderH = Math.max(1, Math.floor(canvas.height / scale));
+
+    worker.onmessage = (
+      e: MessageEvent<{ buf: Uint8ClampedArray; id: number; width: number; height: number }>,
+    ) => {
+      const { buf, id: rid, width: rw, height: rh } = e.data;
+      if (rid !== renderIdRef.current) return; // stale result
+
+      const cvs = canvasRef.current;
+      if (!cvs) return;
+      const ctx = cvs.getContext('2d');
+      if (!ctx) return;
+
+      if (rw === cvs.width && rh === cvs.height) {
+        // Full-res: direct pixel write
+        ctx.putImageData(new ImageData(buf, rw, rh), 0, 0);
+      } else {
+        // Coarse: paint to an OffscreenCanvas then scale up, pixelated
+        const tmp    = new OffscreenCanvas(rw, rh);
+        const tmpCtx = tmp.getContext('2d')!;
+        tmpCtx.putImageData(new ImageData(buf, rw, rh), 0, 0);
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(tmp, 0, 0, cvs.width, cvs.height);
+      }
     };
 
+    worker.postMessage({ width: renderW, height: renderH, centerX, centerY, zoom,
+      maxIter: calcMaxIter(zoom, quality), id });
+  }, []);
+
+  // ── Schedule the crisp full render after interaction stops ─────────────
+  const scheduleFullRender = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => render('full'), 350);
+  }, [render]);
+
+  // ── Initial worker setup (just needs cleanup on unmount) ───────────────
+  useEffect(() => {
     return () => {
-      worker.terminate();
-      cancelAnimationFrame(rafRef.current);
+      workerRef.current?.terminate();
       if (timerRef.current) clearTimeout(timerRef.current);
     };
   }, []);
 
-  // ── Resize → set physical canvas resolution, trigger render ───────────
+  // ── Resize → update physical canvas size, kick off full render ─────────
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -100,7 +114,7 @@ export default function Mandelbrot() {
     return () => ro.disconnect();
   }, [render]);
 
-  // ── Mouse wheel zoom toward pointer ────────────────────────────────────
+  // ── Mouse wheel: coarse immediately, full after idle ───────────────────
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -110,26 +124,23 @@ export default function Mandelbrot() {
 
       const rect = canvas.getBoundingClientRect();
       const dpr  = canvas.width / rect.width;
-      const mx   = (e.clientX - rect.left)  * dpr;
-      const my   = (e.clientY - rect.top)   * dpr;
+      const mx   = (e.clientX - rect.left) * dpr;
+      const my   = (e.clientY - rect.top)  * dpr;
 
       const { centerX, centerY, zoom } = view.current;
-
-      // Complex coordinate currently under the mouse
       const mouseRe = centerX + (mx - canvas.width  * 0.5) / zoom;
       const mouseIm = centerY + (my - canvas.height * 0.5) / zoom;
 
-      const factor  = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+      const factor  = e.deltaY < 0 ? 1.15 : 1 / 1.15;
       const newZoom = Math.max(100, Math.min(1e13, zoom * factor));
 
-      // Shift center so the complex point stays fixed under the mouse
       view.current = {
         centerX: mouseRe - (mx - canvas.width  * 0.5) / newZoom,
         centerY: mouseIm - (my - canvas.height * 0.5) / newZoom,
         zoom:    newZoom,
       };
 
-      render('preview');
+      render('coarse');
       scheduleFullRender();
     };
 
@@ -155,12 +166,13 @@ export default function Mandelbrot() {
       dragRef.current = { x: e.clientX, y: e.clientY };
       const { centerX, centerY, zoom } = view.current;
       view.current = { centerX: centerX - dx / zoom, centerY: centerY - dy / zoom, zoom };
-      render('preview');
+      render('coarse');
     };
     const onUp = () => {
       if (!dragRef.current) return;
       dragRef.current = null;
       canvas.style.cursor = 'crosshair';
+      if (timerRef.current) clearTimeout(timerRef.current);
       render('full');
     };
 
@@ -174,7 +186,7 @@ export default function Mandelbrot() {
     };
   }, [render]);
 
-  // ── Reset view ─────────────────────────────────────────────────────────
+  // ── Reset ──────────────────────────────────────────────────────────────
   const reset = useCallback(() => {
     view.current = { ...INITIAL };
     render('full');
