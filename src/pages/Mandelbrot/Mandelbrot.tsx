@@ -1,4 +1,9 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
+import {
+  Slider, Toggle, SelectControl,
+  ControlPanel, ControlGroup,
+} from '@/components/Controls';
+import type { PaletteId } from './mandelbrot.worker';
 import styles from './Mandelbrot.module.css';
 
 interface View { centerX: number; centerY: number; zoom: number; }
@@ -8,6 +13,15 @@ interface TileResult {
   id: number;
   tileX: number; tileY: number;
   tileW: number; tileH: number;
+}
+
+interface ColorParams {
+  paletteId:    PaletteId;
+  colorSpeed:   number;
+  colorOffset:  number;
+  invertColors: boolean;
+  maxIterMode:  'auto' | 'manual';
+  maxIterManual: number;
 }
 
 const INITIAL: View = { centerX: -0.5, centerY: 0, zoom: 250 };
@@ -75,6 +89,22 @@ export default function Mandelbrot() {
   const tilesExpectedRef   = useRef(0);
   const tilesReceivedRef   = useRef(0);
 
+  // ── Color / quality params ─────────────────────────────────────────────────
+
+  const [paletteId,     setPaletteId]     = useState<PaletteId>('classic');
+  const [colorSpeed,    setColorSpeed]    = useState(0.28);
+  const [colorOffset,   setColorOffset]   = useState(0);
+  const [invertColors,  setInvertColors]  = useState(false);
+  const [maxIterMode,   setMaxIterMode]   = useState<'auto' | 'manual'>('auto');
+  const [maxIterManual, setMaxIterManual] = useState(500);
+
+  // Mutable ref read by startRender — avoids stale closure without needing to
+  // recreate the callback every time a UI param changes.
+  const cpRef = useRef<ColorParams>({
+    paletteId: 'classic', colorSpeed: 0.28, colorOffset: 0,
+    invertColors: false, maxIterMode: 'auto', maxIterManual: 500,
+  });
+
   // ── helpers ────────────────────────────────────────────────────────────────
 
   const syncBack = useCallback(() => {
@@ -136,8 +166,14 @@ export default function Mandelbrot() {
       tileList,
       canvasW: canvas.width, canvasH: canvas.height,
       ...view.current,
-      maxIter: adaptiveMaxIter(view.current.zoom),
+      maxIter: cpRef.current.maxIterMode === 'auto'
+        ? adaptiveMaxIter(view.current.zoom)
+        : cpRef.current.maxIterManual,
       id,
+      paletteId:    cpRef.current.paletteId,
+      colorSpeed:   cpRef.current.colorSpeed,
+      colorOffset:  cpRef.current.colorOffset,
+      invertColors: cpRef.current.invertColors,
     });
   }, [cancelRender]);
 
@@ -279,9 +315,109 @@ export default function Mandelbrot() {
     startRender();
   }, [startRender]);
 
+  // ── color / quality param handlers ─────────────────────────────────────────
+
+  const handlePaletteChange = useCallback((id: PaletteId) => {
+    cpRef.current.paletteId = id;
+    setPaletteId(id);
+    startRender();
+  }, [startRender]);
+
+  const handleColorSpeedChange = useCallback((v: number) => {
+    cpRef.current.colorSpeed = v;
+    setColorSpeed(v);
+    startRender();
+  }, [startRender]);
+
+  const handleColorOffsetChange = useCallback((v: number) => {
+    cpRef.current.colorOffset = v;
+    setColorOffset(v);
+    startRender();
+  }, [startRender]);
+
+  const handleInvertChange = useCallback((v: boolean) => {
+    cpRef.current.invertColors = v;
+    setInvertColors(v);
+    startRender();
+  }, [startRender]);
+
+  const handleMaxIterModeChange = useCallback((adaptive: boolean) => {
+    const mode = adaptive ? 'auto' : 'manual';
+    cpRef.current.maxIterMode = mode;
+    setMaxIterMode(mode);
+    startRender();
+  }, [startRender]);
+
+  const handleMaxIterManualChange = useCallback((v: number) => {
+    cpRef.current.maxIterManual = v;
+    cpRef.current.maxIterMode = 'manual';
+    setMaxIterManual(v);
+    setMaxIterMode('manual');
+    startRender();
+  }, [startRender]);
+
   return (
     <div className={styles.container}>
       <canvas ref={canvasRef} className={styles.canvas} />
+
+      <div className={styles.sidebar}>
+        <ControlPanel title="Colors">
+          <ControlGroup>
+            <SelectControl
+              label="Palette"
+              value={paletteId}
+              onChange={handlePaletteChange}
+              options={[
+                { value: 'classic'  as const, label: 'Classic' },
+                { value: 'fire'     as const, label: 'Fire' },
+                { value: 'ice'      as const, label: 'Ice' },
+                { value: 'electric' as const, label: 'Electric' },
+                { value: 'mono'     as const, label: 'Monochrome' },
+                { value: 'sunset'   as const, label: 'Sunset' },
+              ]}
+            />
+          </ControlGroup>
+          <ControlGroup>
+            <Slider
+              label="Color Speed"
+              value={colorSpeed}
+              min={0.05} max={3} step={0.01}
+              onChange={handleColorSpeedChange}
+            />
+            <Slider
+              label="Color Offset"
+              value={colorOffset}
+              min={0} max={16} step={0.1}
+              onChange={handleColorOffsetChange}
+            />
+          </ControlGroup>
+          <ControlGroup>
+            <Toggle label="Invert Colors" value={invertColors} onChange={handleInvertChange} />
+          </ControlGroup>
+        </ControlPanel>
+
+        <ControlPanel title="Quality" defaultOpen={false}>
+          <ControlGroup>
+            <Toggle
+              label="Adaptive Iterations"
+              value={maxIterMode === 'auto'}
+              onChange={handleMaxIterModeChange}
+              description="Scales with zoom depth"
+            />
+            <Slider
+              label="Max Iterations"
+              value={maxIterManual}
+              min={50} max={2000} step={50}
+              onChange={handleMaxIterManualChange}
+            />
+          </ControlGroup>
+        </ControlPanel>
+
+        <button className={styles.resetBtn} type="button" onClick={reset}>
+          Reset View
+        </button>
+      </div>
+
       <div className={styles.hud}>
         <div className={styles.hudLeft}>
           <span className={styles.hudTitle}>Mandelbrot Set</span>
@@ -289,7 +425,6 @@ export default function Mandelbrot() {
         </div>
         <div className={styles.hudRight}>
           <span className={styles.hudHint}>scroll to zoom &middot; drag to pan</span>
-          <button className={styles.resetBtn} type="button" onClick={reset}>Reset</button>
         </div>
       </div>
     </div>

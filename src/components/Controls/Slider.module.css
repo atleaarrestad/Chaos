@@ -29,6 +29,38 @@
   color: var(--text-muted);
 }
 
+.manualWrap {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+}
+
+.manualInput {
+  width: 72px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  font-weight: var(--weight-medium);
+  padding: 1px 4px;
+  text-align: right;
+  outline: none;
+  transition: border-color var(--ease-fast);
+}
+
+.manualInput:focus {
+  border-color: var(--accent);
+}
+
+.manualInput::-webkit-inner-spin-button,
+.manualInput::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+}
+
+
+
 /* ─── Range track ────────────────────────────────────────────────────────── */
 .range {
   -webkit-appearance: none;
