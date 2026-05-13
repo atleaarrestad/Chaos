@@ -1,3 +1,5 @@
+@import './tokens.css';
+
 /* ─── Reset ──────────────────────────────────────────────────────────────── */
 *, *::before, *::after {
   box-sizing: border-box;
@@ -10,43 +12,11 @@ html, body, #root {
   overflow: hidden;
 }
 
-/* ─── Design Tokens ──────────────────────────────────────────────────────── */
+/* ─── Base ───────────────────────────────────────────────────────────────── */
 :root {
-  /* Backgrounds */
-  --bg:           #07070e;
-  --bg-surface:   #0d0d1a;
-  --bg-card:      #0f0f1c;
-  --bg-hover:     rgba(255, 255, 255, 0.04);
-
-  /* Borders */
-  --border:       rgba(255, 255, 255, 0.07);
-  --border-hover: rgba(255, 255, 255, 0.14);
-
-  /* Text */
-  --text:         #e2e8f0;
-  --text-muted:   #64748b;
-  --text-subtle:  #334155;
-
-  /* Accent — electric indigo */
-  --accent:       #818cf8;
-  --accent-dim:   rgba(129, 140, 248, 0.15);
-  --accent-glow:  rgba(129, 140, 248, 0.35);
-
-  /* Exploration palette */
-  --col-lorenz:       #818cf8;   /* indigo */
-  --col-mandelbrot:   #a855f7;   /* purple */
-  --col-julia:        #f472b6;   /* pink */
-  --col-cardioid:     #fb923c;   /* orange */
-  --col-bifurcation:  #22d3ee;   /* cyan */
-  --col-pendulum:     #4ade80;   /* green */
-
-  /* Typography */
-  --font-sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: ui-monospace, 'Cascadia Code', Consolas, monospace;
-
   font-family: var(--font-sans);
   font-size: 15px;
-  line-height: 1.6;
+  line-height: var(--leading-base);
   color: var(--text);
   background: var(--bg);
   color-scheme: dark;
@@ -55,15 +25,14 @@ html, body, #root {
   text-rendering: optimizeLegibility;
 }
 
-/* ─── Typography ─────────────────────────────────────────────────────────── */
 a {
   color: inherit;
   text-decoration: none;
 }
 
 h1, h2, h3, h4 {
-  font-weight: 600;
-  line-height: 1.25;
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-tight);
   letter-spacing: -0.02em;
 }
 
@@ -75,5 +44,5 @@ code {
 /* ─── Scrollbar ──────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar        { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track  { background: transparent; }
-::-webkit-scrollbar-thumb  { background: var(--text-subtle); border-radius: 3px; }
+::-webkit-scrollbar-thumb  { background: var(--text-subtle); border-radius: var(--radius-sm); }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }

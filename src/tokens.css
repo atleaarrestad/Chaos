@@ -1,0 +1,89 @@
+/**
+ * tokens.css — single source of truth for all design tokens.
+ * Import this file globally (via index.css). CSS Modules reference tokens
+ * with var(--token-name); never hardcode values that have a token.
+ */
+:root {
+  /* ─── Color: Backgrounds ─────────────────────────────────────────── */
+  --bg:           #07070e;
+  --bg-surface:   #0d0d1a;
+  --bg-card:      #0f0f1c;
+  --bg-hover:     rgba(255, 255, 255, 0.04);
+
+  /* ─── Color: Borders ─────────────────────────────────────────────── */
+  --border:       rgba(255, 255, 255, 0.07);
+  --border-hover: rgba(255, 255, 255, 0.14);
+
+  /* ─── Color: Text ────────────────────────────────────────────────── */
+  --text:         #e2e8f0;
+  --text-muted:   #94a3b8;
+  --text-subtle:  #475569;
+
+  /* ─── Color: Accent (electric indigo) ───────────────────────────── */
+  --accent:       #818cf8;
+  --accent-dim:   rgba(129, 140, 248, 0.15);
+  --accent-glow:  rgba(129, 140, 248, 0.35);
+
+  /* ─── Color: Exploration palette ────────────────────────────────── */
+  --col-lorenz:       #818cf8;   /* indigo  */
+  --col-mandelbrot:   #a855f7;   /* purple  */
+  --col-julia:        #f472b6;   /* pink    */
+  --col-cardioid:     #fb923c;   /* orange  */
+  --col-bifurcation:  #22d3ee;   /* cyan    */
+  --col-pendulum:     #4ade80;   /* green   */
+
+  /* ─── Typography: Families ───────────────────────────────────────── */
+  --font-sans: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Code', Consolas, monospace;
+
+  /* ─── Typography: Sizes ──────────────────────────────────────────── */
+  --text-xs:   0.65rem;    /*  ~10px — section labels, badges  */
+  --text-sm:   0.75rem;    /*  ~12px — secondary labels        */
+  --text-base: 0.8125rem;  /*  ~13px — body / nav links        */
+  --text-md:   1rem;       /*  ~16px — card titles, subtext    */
+  --text-lg:   1.125rem;   /*  ~18px — sidebar logo, headings  */
+  --text-xl:   1.5rem;     /*  ~24px — page headings           */
+  --text-2xl:  2rem;       /*  ~32px — hero titles             */
+
+  /* ─── Typography: Weights ────────────────────────────────────────── */
+  --weight-normal:   400;
+  --weight-medium:   500;
+  --weight-semibold: 600;
+  --weight-bold:     700;
+
+  /* ─── Typography: Line heights ───────────────────────────────────── */
+  --leading-tight:   1.25;
+  --leading-snug:    1.4;
+  --leading-base:    1.6;
+  --leading-relaxed: 1.7;
+
+  /* ─── Spacing ────────────────────────────────────────────────────── */
+  --space-1:  0.25rem;
+  --space-2:  0.5rem;
+  --space-3:  0.75rem;
+  --space-4:  1rem;
+  --space-5:  1.25rem;
+  --space-6:  1.5rem;
+  --space-8:  2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+
+  /* ─── Border radii ───────────────────────────────────────────────── */
+  --radius-sm:   4px;
+  --radius-md:   6px;
+  --radius-lg:   12px;
+  --radius-full: 9999px;
+
+  /* ─── Transitions ────────────────────────────────────────────────── */
+  --ease-fast: 0.12s ease;
+  --ease-base: 0.2s ease;
+
+  /* ─── Shadows ────────────────────────────────────────────────────── */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.4);
+
+  /* ─── Layout ─────────────────────────────────────────────────────── */
+  --sidebar-width: 220px;
+}
