@@ -1,0 +1,103 @@
+import { Link } from 'react-router-dom';
+import styles from './Home.module.css';
+
+interface Exploration {
+  path: string;
+  title: string;
+  category: string;
+  description: string;
+  symbol: string;
+  color: string;
+}
+
+const EXPLORATIONS: Exploration[] = [
+  {
+    path: '/lorenz',
+    title: 'Lorenz Attractor',
+    category: 'Attractor',
+    description:
+      'A butterfly-shaped trajectory in phase space, born from three simple differential equations. Sensitive to initial conditions — the hallmark of chaos.',
+    symbol: 'σ',
+    color: 'var(--col-lorenz)',
+  },
+  {
+    path: '/mandelbrot',
+    title: 'Mandelbrot Set',
+    category: 'Fractal',
+    description:
+      'The most famous object in mathematics. An infinitely complex boundary emerges from iterating a single quadratic equation on the complex plane.',
+    symbol: '∞',
+    color: 'var(--col-mandelbrot)',
+  },
+  {
+    path: '/julia',
+    title: 'Julia Sets',
+    category: 'Fractal',
+    description:
+      'A family of fractals parameterized by a complex constant c. Vary c and the structure shifts between connected islands and scattered dust.',
+    symbol: 'ℂ',
+    color: 'var(--col-julia)',
+  },
+  {
+    path: '/cardioid',
+    title: 'Cardioid',
+    category: 'Curve',
+    description:
+      'A heart-shaped curve traced by a point on a circle rolling around an equal circle. Also the main bulb boundary of the Mandelbrot set.',
+    symbol: 'θ',
+    color: 'var(--col-cardioid)',
+  },
+  {
+    path: '/bifurcation',
+    title: 'Bifurcation Diagram',
+    category: 'Diagram',
+    description:
+      'The logistic map x → r·x·(1−x) reveals the road to chaos through period doubling. The Feigenbaum constant δ ≈ 4.669 governs the cascade.',
+    symbol: 'δ',
+    color: 'var(--col-bifurcation)',
+  },
+  {
+    path: '/double-pendulum',
+    title: 'Double Pendulum',
+    category: 'Attractor',
+    description:
+      'Two linked pendulums with unpredictable, swirling motion. A deceptively simple mechanical system that produces genuinely chaotic trajectories.',
+    symbol: 'g',
+    color: 'var(--col-pendulum)',
+  },
+];
+
+export default function Home() {
+  return (
+    <div className={styles.page}>
+      <header className={styles.hero}>
+        <p className={styles.eyebrow}>Interactive Explorer</p>
+        <h1 className={styles.title}>Chaos &amp; Fractals</h1>
+        <p className={styles.subtitle}>
+          Visualize the beautiful complexity hidden in simple equations.
+          From strange attractors to infinite fractal boundaries — explore the mathematics of chaos.
+        </p>
+      </header>
+
+      <section className={styles.grid}>
+        {EXPLORATIONS.map((exp) => (
+          <Link
+            key={exp.path}
+            to={exp.path}
+            className={styles.card}
+            style={{ '--card-color': exp.color } as React.CSSProperties}
+          >
+            <div className={styles.cardVisual}>
+              <span className={styles.cardSymbol}>{exp.symbol}</span>
+            </div>
+            <div className={styles.cardBody}>
+              <span className={styles.cardCategory}>{exp.category}</span>
+              <h2 className={styles.cardTitle}>{exp.title}</h2>
+              <p className={styles.cardDesc}>{exp.description}</p>
+            </div>
+          </Link>
+        ))}
+      </section>
+    </div>
+  );
+}
