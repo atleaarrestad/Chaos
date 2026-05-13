@@ -4,6 +4,7 @@ import Layout from '@/components/Layout/Layout';
 
 const Home = lazy(() => import('@/pages/Home/Home'));
 const ComingSoon = lazy(() => import('@/pages/ComingSoon/ComingSoon'));
+const ControlsTest = lazy(() => import('@/pages/ControlsTest/ControlsTest'));
 
 function Lazy({ children }: { children: ReactNode }) {
   return (
@@ -25,6 +26,7 @@ export const router = createBrowserRouter([
       { path: 'cardioid', element: <Lazy><ComingSoon /></Lazy> },
       { path: 'bifurcation', element: <Lazy><ComingSoon /></Lazy> },
       { path: 'double-pendulum', element: <Lazy><ComingSoon /></Lazy> },
+      { path: 'controls-test', element: <Lazy><ControlsTest /></Lazy> },
     ],
   },
 ]);

@@ -1,0 +1,83 @@
+.control {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.label {
+  font-size: var(--text-base);
+  color: var(--text-muted);
+  font-weight: var(--weight-medium);
+}
+
+.value {
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  color: var(--text);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+}
+
+.unit {
+  color: var(--text-muted);
+}
+
+/* ─── Range track ────────────────────────────────────────────────────────── */
+.range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 3px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(
+    to right,
+    var(--accent) 0%,
+    var(--accent) calc(var(--fill, 0) * 100%),
+    var(--border-hover) calc(var(--fill, 0) * 100%),
+    var(--border-hover) 100%
+  );
+  cursor: pointer;
+  outline: none;
+  padding: var(--space-1) 0;
+}
+
+/* ─── Thumb — WebKit ─────────────────────────────────────────────────────── */
+.range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+  background: #fff;
+  cursor: pointer;
+  box-shadow: 0 0 0 2px var(--accent);
+  transition: box-shadow var(--ease-fast), transform var(--ease-fast);
+}
+
+.range:hover::-webkit-slider-thumb,
+.range:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 2px var(--accent), 0 0 0 5px var(--accent-dim);
+  transform: scale(1.15);
+}
+
+/* ─── Thumb — Firefox ────────────────────────────────────────────────────── */
+.range::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+  background: #fff;
+  border: 2px solid var(--accent);
+  cursor: pointer;
+  transition: box-shadow var(--ease-fast);
+}
+
+.range:hover::-moz-range-thumb,
+.range:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}

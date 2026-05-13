@@ -34,6 +34,12 @@ const NAV: NavSection[] = [
       { path: '/bifurcation', label: 'Bifurcation', symbol: 'δ' },
     ],
   },
+  {
+    section: 'Development',
+    items: [
+      { path: '/controls-test', label: 'Controls Test', symbol: '⚙' },
+    ],
+  },
 ];
 
 export default function Sidebar() {

@@ -1,0 +1,68 @@
+.control {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.label {
+  font-size: var(--text-base);
+  color: var(--text-muted);
+  font-weight: var(--weight-medium);
+}
+
+.desc {
+  font-size: var(--text-xs);
+  color: var(--text-subtle);
+  line-height: var(--leading-snug);
+}
+
+/* ─── Toggle track ───────────────────────────────────────────────────────── */
+.track {
+  flex-shrink: 0;
+  position: relative;
+  width: 36px;
+  height: 20px;
+  border-radius: var(--radius-full);
+  background: var(--bg-hover);
+  border: 1px solid var(--border-hover);
+  cursor: pointer;
+  padding: 0;
+  transition: background var(--ease-fast), border-color var(--ease-fast),
+    box-shadow var(--ease-fast);
+}
+
+.track:focus-visible {
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}
+
+.track.on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ─── Thumb ──────────────────────────────────────────────────────────────── */
+.thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+  background: var(--text-muted);
+  transition: transform var(--ease-fast), background var(--ease-fast);
+  display: block;
+}
+
+.on .thumb {
+  transform: translateX(16px);
+  background: #fff;
+}
