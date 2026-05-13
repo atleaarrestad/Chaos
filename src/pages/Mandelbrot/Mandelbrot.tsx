@@ -8,9 +8,10 @@ import {
   detectWebGL, createWebGLRenderer,
   type WebGLRenderer, type GLRenderParams,
 } from './mandelbrot-webgl';
+import { HP_THRESHOLD, hpPan, hpZoomTo } from './hp';
 import styles from './Mandelbrot.module.css';
 
-interface View { centerX: number; centerY: number; zoom: number; }
+interface View { centerX: number; centerY: number; zoom: number; hpCX?: string; hpCY?: string; }
 interface Tile  { x: number; y: number; w: number; h: number; }
 interface TileResult {
   buf: Uint8ClampedArray;
@@ -240,18 +241,21 @@ export default function Mandelbrot() {
   }, [startRender, clearTimer]);
 
   /** Render the current view immediately via WebGL (GPU mode). */
-  const renderGPU = useCallback(() => {
+  const renderGPU = useCallback((skipOrbit = false) => {
     const glCanvas = glCanvasRef.current;
     const renderer = webglRef.current;
     if (!glCanvas || !renderer) return;
     if (zoomLabel.current) zoomLabel.current.textContent = fmtZoom(view.current.zoom);
     const cp = cpRef.current;
+    const v  = view.current;
     const params: GLRenderParams = {
       canvasW:      glCanvas.width,
       canvasH:      glCanvas.height,
-      ...view.current,
+      centerX:      v.centerX,
+      centerY:      v.centerY,
+      zoom:         v.zoom,
       maxIter:      cp.maxIterMode === 'auto'
-        ? adaptiveMaxIter(view.current.zoom)
+        ? adaptiveMaxIter(v.zoom)
         : cp.maxIterManual,
       paletteId:    cp.paletteId,
       colorSpeed:   cp.colorSpeed,
@@ -260,6 +264,9 @@ export default function Mandelbrot() {
       juliaMode:    cp.juliaMode,
       juliaRe:      cp.juliaRe,
       juliaIm:      cp.juliaIm,
+      hpCenterX:    v.hpCX,
+      hpCenterY:    v.hpCY,
+      skipOrbit,
     };
     renderer.render(params);
     updateCrosshair();
@@ -362,14 +369,35 @@ export default function Mandelbrot() {
       const mouseRe = centerX + (mx - canvas.width  * 0.5) / zoom;
       const mouseIm = centerY + (my - canvas.height * 0.5) / zoom;
       const factor  = e.deltaY < 0 ? 1.15 : 1 / 1.15;
-      const maxZoom = useGPURef.current ? 1e14 : 1e13;
+      const maxZoom = useGPURef.current ? 1e28 : 1e13;
       const newZoom = Math.max(100, Math.min(maxZoom, zoom * factor));
       if (newZoom === zoom) return;
-      view.current  = {
-        centerX: mouseRe - (mx - canvas.width  * 0.5) / newZoom,
-        centerY: mouseIm - (my - canvas.height * 0.5) / newZoom,
-        zoom: newZoom,
-      };
+
+      if (useGPURef.current && newZoom > HP_THRESHOLD) {
+        // HP zoom: use decimal.js to update the HP centre strings.
+        const prev = view.current;
+        const hp = hpZoomTo(
+          prev.hpCX ?? String(prev.centerX),
+          prev.hpCY ?? String(prev.centerY),
+          mx - canvas.width  * 0.5,
+          my - canvas.height * 0.5,
+          prev.zoom,
+          newZoom,
+        );
+        view.current = {
+          centerX: Number(hp.re),
+          centerY: Number(hp.im),
+          zoom: newZoom,
+          hpCX: hp.re,
+          hpCY: hp.im,
+        };
+      } else {
+        view.current  = {
+          centerX: mouseRe - (mx - canvas.width  * 0.5) / newZoom,
+          centerY: mouseIm - (my - canvas.height * 0.5) / newZoom,
+          zoom: newZoom,
+        };
+      }
       if (useGPURef.current) {
         renderGPU(); // instant — no tile delay needed
       } else {
@@ -399,10 +427,29 @@ export default function Mandelbrot() {
       const dx   = Math.round((e.clientX - dragRef.current.x) * dpr);
       const dy   = Math.round((e.clientY - dragRef.current.y) * dpr);
       dragRef.current = { x: e.clientX, y: e.clientY };
-      const { centerX, centerY, zoom } = view.current;
-      view.current = { centerX: centerX - dx / zoom, centerY: centerY - dy / zoom, zoom };
+      if (useGPURef.current && view.current.zoom > HP_THRESHOLD) {
+        const prev = view.current;
+        const hp = hpPan(
+          prev.hpCX ?? String(prev.centerX),
+          prev.hpCY ?? String(prev.centerY),
+          dx, dy,
+          prev.zoom,
+        );
+        view.current = {
+          centerX: Number(hp.re),
+          centerY: Number(hp.im),
+          zoom: prev.zoom,
+          hpCX: hp.re,
+          hpCY: hp.im,
+        };
+      } else {
+        const { centerX, centerY, zoom } = view.current;
+        view.current = { centerX: centerX - dx / zoom, centerY: centerY - dy / zoom, zoom };
+      }
       if (useGPURef.current) {
-        renderGPU(); // re-render every frame — GPU is fast enough
+        // Skip orbit recompute only at deep zoom where Decimal arithmetic is slow (~50ms).
+        // At normal zoom the float64 orbit is instant and must update every frame.
+        renderGPU(view.current.zoom > HP_THRESHOLD);
       } else {
         applyPan(dx, dy);
       }
@@ -431,7 +478,9 @@ export default function Mandelbrot() {
         return;
       }
       // GPU already renders at full quality during drag; CPU needs a final full render.
+      // Force orbit recompute after drag ends (was skipped during drag for performance).
       if (!useGPURef.current) startRender(true);
+      else renderGPU(false);
     };
     canvas.addEventListener('mousedown', onDown);
     window.addEventListener('mousemove', onMove);
@@ -444,7 +493,7 @@ export default function Mandelbrot() {
   }, [applyPan, startRender, cancelRender, renderGPU, triggerRender]);
 
   const reset = useCallback(() => {
-    view.current = { ...INITIAL };
+    view.current = { ...INITIAL, hpCX: undefined, hpCY: undefined };
     triggerRender();
   }, [triggerRender]);
 
