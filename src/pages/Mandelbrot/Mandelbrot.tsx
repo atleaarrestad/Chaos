@@ -22,7 +22,17 @@ interface ColorParams {
   invertColors: boolean;
   maxIterMode:  'auto' | 'manual';
   maxIterManual: number;
+  juliaMode:    boolean;
+  juliaRe:      number;
+  juliaIm:      number;
 }
+
+const PRESETS = [
+  { label: 'Seahorse',  centerX: -0.7435, centerY:  0.1312, zoom:  5_000 },
+  { label: 'Elephant',  centerX:  0.3245046418, centerY:  0.0485510182, zoom: 50_000 },
+  { label: 'Spirals',   centerX: -0.7269, centerY:  0.1889, zoom: 40_000 },
+  { label: 'Mini-Brot', centerX: -1.7549, centerY:  0.0000, zoom:  8_000 },
+] as const;
 
 const INITIAL: View = { centerX: -0.5, centerY: 0, zoom: 250 };
 const TILE = 256;
@@ -72,14 +82,16 @@ function fmtZoom(zoom: number): string {
 }
 
 export default function Mandelbrot() {
-  const canvasRef   = useRef<HTMLCanvasElement>(null);
-  const backRef     = useRef<HTMLCanvasElement | null>(null);
-  const view        = useRef<View>({ ...INITIAL });
-  const workerRef   = useRef<Worker | null>(null);
-  const renderIdRef = useRef(0);
-  const renderTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const dragRef     = useRef<{ x: number; y: number } | null>(null);
-  const zoomLabel   = useRef<HTMLSpanElement>(null);
+  const canvasRef      = useRef<HTMLCanvasElement>(null);
+  const backRef        = useRef<HTMLCanvasElement | null>(null);
+  const view           = useRef<View>({ ...INITIAL });
+  const workerRef      = useRef<Worker | null>(null);
+  const renderIdRef    = useRef(0);
+  const renderTimer    = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dragRef        = useRef<{ x: number; y: number } | null>(null);
+  const dragStartRef   = useRef<{ x: number; y: number } | null>(null);
+  const zoomLabel      = useRef<HTMLSpanElement>(null);
+  const crosshairRef   = useRef<HTMLDivElement>(null);
   // Accumulated pan (px) since the last render started — used to skip clean tiles on drag
   const panSinceRenderRef  = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   // Zoom level at the last render start — if it changed, all tiles are dirty
@@ -89,7 +101,7 @@ export default function Mandelbrot() {
   const tilesExpectedRef   = useRef(0);
   const tilesReceivedRef   = useRef(0);
 
-  // ── Color / quality params ─────────────────────────────────────────────────
+  // ── Color / quality / Julia params ────────────────────────────────────────
 
   const [paletteId,     setPaletteId]     = useState<PaletteId>('classic');
   const [colorSpeed,    setColorSpeed]    = useState(0.28);
@@ -97,15 +109,35 @@ export default function Mandelbrot() {
   const [invertColors,  setInvertColors]  = useState(false);
   const [maxIterMode,   setMaxIterMode]   = useState<'auto' | 'manual'>('auto');
   const [maxIterManual, setMaxIterManual] = useState(500);
+  const [juliaMode,     setJuliaMode]     = useState(false);
+  const [juliaRe,       setJuliaRe]       = useState(-0.7);
+  const [juliaIm,       setJuliaIm]       = useState(0.27015);
 
-  // Mutable ref read by startRender — avoids stale closure without needing to
-  // recreate the callback every time a UI param changes.
+  // Mutable ref read by startRender — avoids stale closures without needing
+  // to recreate callbacks every time a UI param changes.
   const cpRef = useRef<ColorParams>({
     paletteId: 'classic', colorSpeed: 0.28, colorOffset: 0,
     invertColors: false, maxIterMode: 'auto', maxIterManual: 500,
+    juliaMode: false, juliaRe: -0.7, juliaIm: 0.27015,
   });
 
   // ── helpers ────────────────────────────────────────────────────────────────
+
+  /** Repositions the crosshair overlay to the current Julia c point. */
+  const updateCrosshair = useCallback(() => {
+    const el = crosshairRef.current, canvas = canvasRef.current;
+    if (!el || !canvas) return;
+    if (cpRef.current.juliaMode) { el.hidden = true; return; }
+    const rect = canvas.getBoundingClientRect();
+    const dpr  = canvas.width / rect.width;
+    const { centerX, centerY, zoom } = view.current;
+    const cssX = (cpRef.current.juliaRe - centerX) * zoom / dpr + rect.width  * 0.5;
+    const cssY = (cpRef.current.juliaIm - centerY) * zoom / dpr + rect.height * 0.5;
+    const pad  = 16;
+    const inView = cssX > pad && cssX < rect.width - pad && cssY > pad && cssY < rect.height - pad;
+    el.hidden = !inView;
+    if (inView) { el.style.left = `${cssX}px`; el.style.top = `${cssY}px`; }
+  }, []);
 
   const syncBack = useCallback(() => {
     const c = canvasRef.current, b = backRef.current;
@@ -162,20 +194,25 @@ export default function Mandelbrot() {
     };
     workerRef.current = w;
 
+    const cp = cpRef.current;
     w.postMessage({
       tileList,
       canvasW: canvas.width, canvasH: canvas.height,
       ...view.current,
-      maxIter: cpRef.current.maxIterMode === 'auto'
+      maxIter: cp.maxIterMode === 'auto'
         ? adaptiveMaxIter(view.current.zoom)
-        : cpRef.current.maxIterManual,
+        : cp.maxIterManual,
       id,
-      paletteId:    cpRef.current.paletteId,
-      colorSpeed:   cpRef.current.colorSpeed,
-      colorOffset:  cpRef.current.colorOffset,
-      invertColors: cpRef.current.invertColors,
+      paletteId:    cp.paletteId,
+      colorSpeed:   cp.colorSpeed,
+      colorOffset:  cp.colorOffset,
+      invertColors: cp.invertColors,
+      juliaMode:    cp.juliaMode,
+      juliaRe:      cp.juliaRe,
+      juliaIm:      cp.juliaIm,
     });
-  }, [cancelRender]);
+    updateCrosshair();
+  }, [cancelRender, updateCrosshair]);
 
   /** Schedule a render after the user stops interacting. */
   const scheduleRender = useCallback(() => {
@@ -199,7 +236,8 @@ export default function Mandelbrot() {
     ctx.drawImage(b, 0, 0);
     ctx.restore();
     syncBack();
-  }, [syncBack]);
+    updateCrosshair();
+  }, [syncBack, updateCrosshair]);
 
   const applyPan = useCallback((dx: number, dy: number) => {
     panSinceRenderRef.current = {
@@ -214,7 +252,8 @@ export default function Mandelbrot() {
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(b, dx, dy);
     syncBack();
-  }, [syncBack]);
+    updateCrosshair();
+  }, [syncBack, updateCrosshair]);
 
   // ── lifecycle ──────────────────────────────────────────────────────────────
 
@@ -275,7 +314,7 @@ export default function Mandelbrot() {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const onDown = (e: MouseEvent) => {
-      dragRef.current = { x: e.clientX, y: e.clientY };
+      dragRef.current = dragStartRef.current = { x: e.clientX, y: e.clientY };
       canvas.style.cursor = 'grabbing';
       cancelRender();
     };
@@ -283,8 +322,6 @@ export default function Mandelbrot() {
       if (!dragRef.current) return;
       const rect = canvas.getBoundingClientRect();
       const dpr  = canvas.width / rect.width;
-      // Round to integers: keeps canvas pixel shift, panSinceRenderRef, and view math
-      // all in sync — prevents sub-pixel drift that causes tile seams on the clean boundary.
       const dx   = Math.round((e.clientX - dragRef.current.x) * dpr);
       const dy   = Math.round((e.clientY - dragRef.current.y) * dpr);
       dragRef.current = { x: e.clientX, y: e.clientY };
@@ -292,11 +329,30 @@ export default function Mandelbrot() {
       view.current = { centerX: centerX - dx / zoom, centerY: centerY - dy / zoom, zoom };
       applyPan(dx, dy);
     };
-    const onUp = () => {
+    const onUp = (e: MouseEvent) => {
       if (!dragRef.current) return;
-      dragRef.current = null;
+      const start = dragStartRef.current;
+      const wasDrag = start && (Math.hypot(e.clientX - start.x, e.clientY - start.y) > 4);
+      dragRef.current = dragStartRef.current = null;
       canvas.style.cursor = 'crosshair';
-      startRender(true); // render immediately — skip tiles still correct from last render
+
+      // Click (no drag) while Julia mode is active → update the c parameter
+      if (!wasDrag && cpRef.current.juliaMode) {
+        const rect = canvas.getBoundingClientRect();
+        const dpr  = canvas.width / rect.width;
+        const { centerX, centerY, zoom } = view.current;
+        const px = (e.clientX - rect.left) * dpr;
+        const py = (e.clientY - rect.top)  * dpr;
+        const re = centerX + (px - canvas.width  * 0.5) / zoom;
+        const im = centerY + (py - canvas.height * 0.5) / zoom;
+        cpRef.current.juliaRe = re;
+        cpRef.current.juliaIm = im;
+        setJuliaRe(re);
+        setJuliaIm(im);
+        startRender();
+        return;
+      }
+      startRender(true);
     };
     canvas.addEventListener('mousedown', onDown);
     window.addEventListener('mousemove', onMove);
@@ -356,11 +412,60 @@ export default function Mandelbrot() {
     startRender();
   }, [startRender]);
 
+  const handleJuliaModeChange = useCallback((on: boolean) => {
+    cpRef.current.juliaMode = on;
+    setJuliaMode(on);
+    if (on) view.current = { centerX: 0, centerY: 0, zoom: 250 };
+    else view.current = { ...INITIAL };
+    startRender();
+  }, [startRender]);
+
+  const handleJuliaReChange = useCallback((v: number) => {
+    cpRef.current.juliaRe = v;
+    setJuliaRe(v);
+    updateCrosshair();
+    startRender();
+  }, [startRender, updateCrosshair]);
+
+  const handleJuliaImChange = useCallback((v: number) => {
+    cpRef.current.juliaIm = v;
+    setJuliaIm(v);
+    updateCrosshair();
+    startRender();
+  }, [startRender, updateCrosshair]);
+
+  const goToPreset = useCallback((p: typeof PRESETS[number]) => {
+    view.current = { centerX: p.centerX, centerY: p.centerY, zoom: p.zoom };
+    startRender();
+  }, [startRender]);
+
+  const saveImage = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const a = document.createElement('a');
+    a.href     = canvas.toDataURL('image/png');
+    a.download = 'mandelbrot.png';
+    a.click();
+  }, []);
+
   return (
     <div className={styles.container}>
       <canvas ref={canvasRef} className={styles.canvas} />
 
       <div className={styles.sidebar}>
+        <ControlPanel title="Explore">
+          <ControlGroup>
+            <div className={styles.snapRow}>
+              {PRESETS.map(p => (
+                <button key={p.label} className={styles.snapBtn} type="button"
+                  onClick={() => goToPreset(p)}>
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </ControlGroup>
+        </ControlPanel>
+
         <ControlPanel title="Colors">
           <ControlGroup>
             <SelectControl
@@ -396,6 +501,31 @@ export default function Mandelbrot() {
           </ControlGroup>
         </ControlPanel>
 
+        <ControlPanel title="Julia Set" defaultOpen={false}>
+          <ControlGroup>
+            <Toggle
+              label="Julia Mode"
+              value={juliaMode}
+              onChange={handleJuliaModeChange}
+              description="Enable, then click canvas to pick c"
+            />
+          </ControlGroup>
+          <ControlGroup>
+            <Slider
+              label="Re(c)"
+              value={juliaRe}
+              min={-2} max={2} step={0.001}
+              onChange={handleJuliaReChange}
+            />
+            <Slider
+              label="Im(c)"
+              value={juliaIm}
+              min={-2} max={2} step={0.001}
+              onChange={handleJuliaImChange}
+            />
+          </ControlGroup>
+        </ControlPanel>
+
         <ControlPanel title="Quality" defaultOpen={false}>
           <ControlGroup>
             <Toggle
@@ -413,6 +543,10 @@ export default function Mandelbrot() {
           </ControlGroup>
         </ControlPanel>
 
+        <button className={styles.saveBtn} type="button" onClick={saveImage}>
+          ↓ Save PNG
+        </button>
+
         <button className={styles.resetBtn} type="button" onClick={reset}>
           Reset View
         </button>
@@ -420,11 +554,17 @@ export default function Mandelbrot() {
 
       <div className={styles.hud}>
         <div className={styles.hudLeft}>
-          <span className={styles.hudTitle}>Mandelbrot Set</span>
+          <span className={styles.hudTitle}>
+            {juliaMode ? 'Julia Set' : 'Mandelbrot Set'}
+          </span>
           <span ref={zoomLabel} className={styles.hudZoom}>1.0&times;</span>
         </div>
         <div className={styles.hudRight}>
-          <span className={styles.hudHint}>scroll to zoom &middot; drag to pan</span>
+          <span className={styles.hudHint}>
+            {juliaMode
+              ? 'click to pick c · scroll to zoom · drag to pan'
+              : 'scroll to zoom · drag to pan'}
+          </span>
         </div>
       </div>
     </div>

@@ -60,12 +60,16 @@ interface RenderMsg {
   colorSpeed:   number;
   colorOffset:  number;
   invertColors: boolean;
+  juliaMode:    boolean;
+  juliaRe:      number;
+  juliaIm:      number;
 }
 
 self.onmessage = (e: MessageEvent<RenderMsg>) => {
   const {
     tileList, canvasW, canvasH, centerX, centerY, zoom, maxIter, id,
     paletteId, colorSpeed, colorOffset, invertColors,
+    juliaMode, juliaRe, juliaIm,
   } = e.data;
 
   const raw = PALETTES[paletteId] ?? PALETTES.classic;
@@ -85,10 +89,15 @@ self.onmessage = (e: MessageEvent<RenderMsg>) => {
       for (let px = x; px < x + w; px++) {
         const c_re = centerX + (px - halfW) * scale;
 
-        let re = 0, im = 0, re2 = 0, im2 = 0, iter = 0;
+        // Mandelbrot: z₀ = 0, c = pixel.  Julia: z₀ = pixel, c = juliaC.
+        let re = juliaMode ? c_re : 0;
+        let im = juliaMode ? c_im : 0;
+        const fixRe = juliaMode ? juliaRe : c_re;
+        const fixIm = juliaMode ? juliaIm : c_im;
+        let re2 = re * re, im2 = im * im, iter = 0;
         while (re2 + im2 <= 4 && iter < maxIter) {
-          im  = 2 * re * im + c_im;
-          re  = re2 - im2 + c_re;
+          im  = 2 * re * im + fixIm;
+          re  = re2 - im2 + fixRe;
           re2 = re * re;
           im2 = im * im;
           iter++;
