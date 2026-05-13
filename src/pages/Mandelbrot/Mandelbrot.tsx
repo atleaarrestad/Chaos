@@ -67,7 +67,7 @@ export default function Mandelbrot() {
   const drawTile = useCallback((r: TileResult) => {
     const c = canvasRef.current, b = backRef.current;
     if (!c || !b) return;
-    const img = new ImageData(r.buf, r.tileW, r.tileH);
+    const img = new ImageData(new Uint8ClampedArray(r.buf.buffer as ArrayBuffer), r.tileW, r.tileH);
     c.getContext('2d')!.putImageData(img, r.tileX, r.tileY);
     b.getContext('2d')!.putImageData(img, r.tileX, r.tileY);
   }, []);
