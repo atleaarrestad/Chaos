@@ -1,21 +1,24 @@
 import { useEffect, useRef, useCallback } from 'react';
 import styles from './Mandelbrot.module.css';
 
-interface View {
-  centerX: number;
-  centerY: number;
-  zoom: number;
-}
-
-type Quality = 'coarse' | 'full';
+interface View { centerX: number; centerY: number; zoom: number; }
+type Stage = 'draft' | 'refine1' | 'refine2';
+interface WorkerResult { buf: Uint8ClampedArray; id: number; width: number; height: number; }
 
 const INITIAL: View = { centerX: -0.5, centerY: 0, zoom: 250 };
-/** How many canvas pixels map to 1 render pixel in coarse mode. */
-const COARSE_SCALE = 4;
+const DRAFT_SCALE = 4; // 1/16th the pixel count → ~20-50ms per frame
 
-function calcMaxIter(zoom: number, quality: Quality): number {
-  if (quality === 'coarse') return 28;
-  return Math.min(2000, Math.max(80, Math.floor(40 + 18 * Math.log2(zoom))));
+function adaptiveMaxIter(zoom: number) {
+  return Math.min(2000, Math.max(80, (40 + 18 * Math.log2(zoom)) | 0));
+}
+
+function stageConfig(zoom: number, stage: Stage) {
+  const full = adaptiveMaxIter(zoom);
+  switch (stage) {
+    case 'draft':   return { resScale: DRAFT_SCALE, maxIter: 20 };
+    case 'refine1': return { resScale: 1, maxIter: Math.max(40, (full * 0.35) | 0) };
+    case 'refine2': return { resScale: 1, maxIter: full };
+  }
 }
 
 function fmtZoom(zoom: number): string {
@@ -25,137 +28,177 @@ function fmtZoom(zoom: number): string {
   return f.toExponential(2) + '×';
 }
 
-function createWorker() {
-  return new Worker(new URL('./mandelbrot.worker.ts', import.meta.url), { type: 'module' });
+/** Blit a small buffer up to fill the full canvas. */
+function drawScaled(ctx: CanvasRenderingContext2D, buf: Uint8ClampedArray,
+                    rw: number, rh: number, cw: number, ch: number) {
+  const tmp = document.createElement('canvas');
+  tmp.width = rw; tmp.height = rh;
+  tmp.getContext('2d')!.putImageData(new ImageData(buf, rw, rh), 0, 0);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(tmp, 0, 0, cw, ch);
 }
 
 export default function Mandelbrot() {
-  const canvasRef    = useRef<HTMLCanvasElement>(null);
-  const view         = useRef<View>({ ...INITIAL });
-  const workerRef    = useRef<Worker | null>(null);
-  const renderIdRef  = useRef(0);
-  const timerRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const dragRef      = useRef<{ x: number; y: number } | null>(null);
-  const zoomLabelRef = useRef<HTMLSpanElement>(null);
+  const canvasRef     = useRef<HTMLCanvasElement>(null);
+  const view          = useRef<View>({ ...INITIAL });
+  const workerRef     = useRef<Worker | null>(null);
+  const renderIdRef   = useRef(0);
+  /** What the worker is currently computing. */
+  const inFlightRef   = useRef<'none' | 'draft' | 'refine'>('none');
+  /** Did the view change while a draft was in-flight? */
+  const draftDirtyRef = useRef(false);
+  const r1TimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const r2TimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dragRef       = useRef<{ x: number; y: number } | null>(null);
+  const zoomLabelRef  = useRef<HTMLSpanElement>(null);
+  /** Stable ref so worker's onmessage can call render without stale closure. */
+  const renderFnRef   = useRef<(stage: Stage) => void>(() => {});
 
-  // ── Core render: terminate any in-flight job, spin up fresh worker ─────
-  const render = useCallback((quality: Quality) => {
+  // ── Worker message handler ─────────────────────────────────────────────
+  const handleWorkerMsg = useCallback((e: MessageEvent<WorkerResult>) => {
+    const { buf, id: rid, width: rw, height: rh } = e.data;
+    if (rid !== renderIdRef.current) return; // stale result, discard
+
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx) return;
 
-    // Cancel previous computation immediately (no waiting for it to finish)
-    if (workerRef.current) workerRef.current.terminate();
-    const worker = createWorker();
-    workerRef.current = worker;
+    if (rw === canvas.width && rh === canvas.height) {
+      ctx.putImageData(new ImageData(buf, rw, rh), 0, 0);
+    } else {
+      drawScaled(ctx, buf, rw, rh, canvas.width, canvas.height);
+    }
 
-    const { centerX, centerY, zoom } = view.current;
+    inFlightRef.current = 'none';
+
+    // Chain: if view moved while we were computing this draft, render again
+    if (draftDirtyRef.current) {
+      draftDirtyRef.current = false;
+      renderFnRef.current('draft');
+    }
+  }, []);
+
+  // ── Terminate current worker and spin up a fresh one ──────────────────
+  const spawnWorker = useCallback(() => {
+    workerRef.current?.terminate();
+    const w = new Worker(new URL('./mandelbrot.worker.ts', import.meta.url), { type: 'module' });
+    w.onmessage = handleWorkerMsg;
+    workerRef.current = w;
+    inFlightRef.current = 'none';
+    draftDirtyRef.current = false;
+  }, [handleWorkerMsg]);
+
+  // ── Send a render job to the existing worker ───────────────────────────
+  const postJob = useCallback((stage: Stage) => {
+    const canvas = canvasRef.current;
+    const worker = workerRef.current;
+    if (!canvas || !worker) return;
+
+    const { resScale, maxIter } = stageConfig(view.current.zoom, stage);
+    const rw = Math.max(1, (canvas.width  / resScale) | 0);
+    const rh = Math.max(1, (canvas.height / resScale) | 0);
     const id = ++renderIdRef.current;
 
-    if (zoomLabelRef.current) zoomLabelRef.current.textContent = fmtZoom(zoom);
+    if (zoomLabelRef.current) zoomLabelRef.current.textContent = fmtZoom(view.current.zoom);
 
-    const scale   = quality === 'coarse' ? COARSE_SCALE : 1;
-    const renderW = Math.max(1, Math.floor(canvas.width  / scale));
-    const renderH = Math.max(1, Math.floor(canvas.height / scale));
+    inFlightRef.current = stage === 'draft' ? 'draft' : 'refine';
+    draftDirtyRef.current = false;
+    worker.postMessage({ width: rw, height: rh, ...view.current, maxIter, id });
+  }, []);
 
-    worker.onmessage = (
-      e: MessageEvent<{ buf: Uint8ClampedArray; id: number; width: number; height: number }>,
-    ) => {
-      const { buf, id: rid, width: rw, height: rh } = e.data;
-      if (rid !== renderIdRef.current) return; // stale result
-
-      const cvs = canvasRef.current;
-      if (!cvs) return;
-      const ctx = cvs.getContext('2d');
-      if (!ctx) return;
-
-      if (rw === cvs.width && rh === cvs.height) {
-        // Full-res: direct pixel write
-        ctx.putImageData(new ImageData(buf, rw, rh), 0, 0);
-      } else {
-        // Coarse: paint to an OffscreenCanvas then scale up, pixelated
-        const tmp    = new OffscreenCanvas(rw, rh);
-        const tmpCtx = tmp.getContext('2d')!;
-        tmpCtx.putImageData(new ImageData(buf, rw, rh), 0, 0);
-        ctx.imageSmoothingEnabled = false;
-        ctx.drawImage(tmp, 0, 0, cvs.width, cvs.height);
+  // ── Main render entry point ────────────────────────────────────────────
+  const render = useCallback((stage: Stage) => {
+    if (stage === 'draft') {
+      switch (inFlightRef.current) {
+        case 'draft':
+          // Never interrupt a fast draft; just note the view changed.
+          // handleWorkerMsg will chain another draft when this one finishes.
+          draftDirtyRef.current = true;
+          return;
+        case 'refine':
+          // Abort the slow refine so the draft can start immediately.
+          spawnWorker();
+          break;
+        // case 'none': fall through
       }
-    };
+    } else {
+      // Refine always aborts whatever is running.
+      spawnWorker();
+    }
+    postJob(stage);
+  }, [spawnWorker, postJob]);
 
-    worker.postMessage({ width: renderW, height: renderH, centerX, centerY, zoom,
-      maxIter: calcMaxIter(zoom, quality), id });
+  // Keep renderFnRef current so worker callbacks never hold a stale render.
+  useEffect(() => { renderFnRef.current = render; }, [render]);
+
+  const clearRefineTimers = useCallback(() => {
+    if (r1TimerRef.current) { clearTimeout(r1TimerRef.current); r1TimerRef.current = null; }
+    if (r2TimerRef.current) { clearTimeout(r2TimerRef.current); r2TimerRef.current = null; }
   }, []);
 
-  // ── Schedule the crisp full render after interaction stops ─────────────
-  const scheduleFullRender = useCallback(() => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => render('full'), 350);
-  }, [render]);
+  /** After interaction stops: refine1 at 200 ms, refine2 at 800 ms. */
+  const scheduleRefine = useCallback(() => {
+    clearRefineTimers();
+    r1TimerRef.current = setTimeout(() => render('refine1'), 200);
+    r2TimerRef.current = setTimeout(() => render('refine2'), 800);
+  }, [render, clearRefineTimers]);
 
-  // ── Initial worker setup (just needs cleanup on unmount) ───────────────
+  // ── Lifecycle ──────────────────────────────────────────────────────────
   useEffect(() => {
-    return () => {
-      workerRef.current?.terminate();
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, []);
+    spawnWorker();
+    return () => { workerRef.current?.terminate(); clearRefineTimers(); };
+  }, [spawnWorker, clearRefineTimers]);
 
-  // ── Resize → update physical canvas size, kick off full render ─────────
+  // ── Resize → update physical canvas dimensions, full re-render ─────────
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ro = new ResizeObserver(() => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       const rect = canvas.getBoundingClientRect();
-      canvas.width  = Math.floor(rect.width  * dpr);
-      canvas.height = Math.floor(rect.height * dpr);
-      render('full');
+      canvas.width  = (rect.width  * dpr) | 0;
+      canvas.height = (rect.height * dpr) | 0;
+      render('refine2');
     });
     ro.observe(canvas);
     return () => ro.disconnect();
   }, [render]);
 
-  // ── Mouse wheel: coarse immediately, full after idle ───────────────────
+  // ── Wheel: draft immediately, queue refinement after idle ──────────────
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-
-      const rect = canvas.getBoundingClientRect();
-      const dpr  = canvas.width / rect.width;
-      const mx   = (e.clientX - rect.left) * dpr;
-      const my   = (e.clientY - rect.top)  * dpr;
-
+      const rect    = canvas.getBoundingClientRect();
+      const dpr     = canvas.width / rect.width;
+      const mx      = (e.clientX - rect.left) * dpr;
+      const my      = (e.clientY - rect.top)  * dpr;
       const { centerX, centerY, zoom } = view.current;
       const mouseRe = centerX + (mx - canvas.width  * 0.5) / zoom;
       const mouseIm = centerY + (my - canvas.height * 0.5) / zoom;
-
       const factor  = e.deltaY < 0 ? 1.15 : 1 / 1.15;
       const newZoom = Math.max(100, Math.min(1e13, zoom * factor));
-
-      view.current = {
+      view.current  = {
         centerX: mouseRe - (mx - canvas.width  * 0.5) / newZoom,
         centerY: mouseIm - (my - canvas.height * 0.5) / newZoom,
-        zoom:    newZoom,
+        zoom: newZoom,
       };
-
-      render('coarse');
-      scheduleFullRender();
+      render('draft');
+      scheduleRefine();
     };
-
     canvas.addEventListener('wheel', onWheel, { passive: false });
     return () => canvas.removeEventListener('wheel', onWheel);
-  }, [render, scheduleFullRender]);
+  }, [render, scheduleRefine]);
 
-  // ── Drag to pan ────────────────────────────────────────────────────────
+  // ── Drag: draft while panning, full quality on release ─────────────────
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const onDown = (e: MouseEvent) => {
       dragRef.current = { x: e.clientX, y: e.clientY };
       canvas.style.cursor = 'grabbing';
+      clearRefineTimers();
     };
     const onMove = (e: MouseEvent) => {
       if (!dragRef.current) return;
@@ -166,16 +209,15 @@ export default function Mandelbrot() {
       dragRef.current = { x: e.clientX, y: e.clientY };
       const { centerX, centerY, zoom } = view.current;
       view.current = { centerX: centerX - dx / zoom, centerY: centerY - dy / zoom, zoom };
-      render('coarse');
+      render('draft');
     };
     const onUp = () => {
       if (!dragRef.current) return;
       dragRef.current = null;
       canvas.style.cursor = 'crosshair';
-      if (timerRef.current) clearTimeout(timerRef.current);
-      render('full');
+      clearRefineTimers();
+      render('refine2'); // skip refine1, go straight to full quality
     };
-
     canvas.addEventListener('mousedown', onDown);
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup',   onUp);
@@ -184,18 +226,17 @@ export default function Mandelbrot() {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup',   onUp);
     };
-  }, [render]);
+  }, [render, clearRefineTimers]);
 
-  // ── Reset ──────────────────────────────────────────────────────────────
   const reset = useCallback(() => {
     view.current = { ...INITIAL };
-    render('full');
-  }, [render]);
+    clearRefineTimers();
+    render('refine2');
+  }, [render, clearRefineTimers]);
 
   return (
     <div className={styles.container}>
       <canvas ref={canvasRef} className={styles.canvas} />
-
       <div className={styles.hud}>
         <div className={styles.hudLeft}>
           <span className={styles.hudTitle}>Mandelbrot Set</span>
@@ -203,9 +244,7 @@ export default function Mandelbrot() {
         </div>
         <div className={styles.hudRight}>
           <span className={styles.hudHint}>scroll to zoom · drag to pan</span>
-          <button className={styles.resetBtn} type="button" onClick={reset}>
-            Reset
-          </button>
+          <button className={styles.resetBtn} type="button" onClick={reset}>Reset</button>
         </div>
       </div>
     </div>
