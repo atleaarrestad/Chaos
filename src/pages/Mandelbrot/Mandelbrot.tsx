@@ -174,6 +174,7 @@ export default function Mandelbrot() {
       const mouseIm = centerY + (my - canvas.height * 0.5) / zoom;
       const factor  = e.deltaY < 0 ? 1.15 : 1 / 1.15;
       const newZoom = Math.max(100, Math.min(1e13, zoom * factor));
+      if (newZoom === zoom) return; // already at zoom limit — nothing changed, keep current render
       view.current  = {
         centerX: mouseRe - (mx - canvas.width  * 0.5) / newZoom,
         centerY: mouseIm - (my - canvas.height * 0.5) / newZoom,
