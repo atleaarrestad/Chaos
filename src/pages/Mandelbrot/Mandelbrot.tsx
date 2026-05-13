@@ -85,7 +85,7 @@ export default function Mandelbrot() {
   const canvasRef      = useRef<HTMLCanvasElement>(null);
   const backRef        = useRef<HTMLCanvasElement | null>(null);
   const view           = useRef<View>({ ...INITIAL });
-  const workerRef      = useRef<Worker | null>(null);
+  const workersRef     = useRef<Worker[]>([]);
   const renderIdRef    = useRef(0);
   const renderTimer    = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dragRef        = useRef<{ x: number; y: number } | null>(null);
@@ -150,8 +150,8 @@ export default function Mandelbrot() {
 
   /** Kill any running render immediately. In-flight worker messages are dropped via renderId. */
   const cancelRender = useCallback(() => {
-    workerRef.current?.terminate();
-    workerRef.current = null;
+    workersRef.current.forEach(w => w.terminate());
+    workersRef.current = [];
     renderIdRef.current++;
     clearTimer();
   }, [clearTimer]);
@@ -178,10 +178,13 @@ export default function Mandelbrot() {
     tilesReceivedRef.current = 0;
 
     const id = ++renderIdRef.current;
-    const w = new Worker(new URL('./mandelbrot.worker.ts', import.meta.url), { type: 'module' });
-    w.onmessage = (e: MessageEvent<TileResult>) => {
-      // Use renderIdRef.current (not closure 'id') so that messages already queued by a
-      // terminated worker — but not yet processed — are rejected after cancelRender() fires.
+    const nWorkers = Math.max(1, Math.min(navigator.hardwareConcurrency ?? 4, 8));
+
+    // Distribute tiles round-robin so each worker gets a center-out spread
+    const chunks: Tile[][] = Array.from({ length: nWorkers }, () => []);
+    tileList.forEach((tile, i) => chunks[i % nWorkers].push(tile));
+
+    const onMessage = (e: MessageEvent<TileResult>) => {
       if (e.data.id !== renderIdRef.current) return;
       const r = e.data;
       const img = new ImageData(new Uint8ClampedArray(r.buf.buffer as ArrayBuffer), r.tileW, r.tileH);
@@ -189,14 +192,12 @@ export default function Mandelbrot() {
       backRef.current?.getContext('2d')!.putImageData(img, r.tileX, r.tileY);
       tilesReceivedRef.current++;
       if (tilesReceivedRef.current >= tilesExpectedRef.current) {
-        renderCompleteRef.current = true; // all tiles received — canvas is uniform quality
+        renderCompleteRef.current = true;
       }
     };
-    workerRef.current = w;
 
     const cp = cpRef.current;
-    w.postMessage({
-      tileList,
+    const baseMsg = {
       canvasW: canvas.width, canvasH: canvas.height,
       ...view.current,
       maxIter: cp.maxIterMode === 'auto'
@@ -210,7 +211,16 @@ export default function Mandelbrot() {
       juliaMode:    cp.juliaMode,
       juliaRe:      cp.juliaRe,
       juliaIm:      cp.juliaIm,
-    });
+    };
+
+    workersRef.current = chunks
+      .filter(chunk => chunk.length > 0)
+      .map(chunk => {
+        const w = new Worker(new URL('./mandelbrot.worker.ts', import.meta.url), { type: 'module' });
+        w.onmessage = onMessage;
+        w.postMessage({ ...baseMsg, tileList: chunk });
+        return w;
+      });
     updateCrosshair();
   }, [cancelRender, updateCrosshair]);
 
