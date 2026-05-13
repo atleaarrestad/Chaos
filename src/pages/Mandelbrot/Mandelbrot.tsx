@@ -107,7 +107,9 @@ export default function Mandelbrot() {
     const id = ++renderIdRef.current;
     const w = new Worker(new URL('./mandelbrot.worker.ts', import.meta.url), { type: 'module' });
     w.onmessage = (e: MessageEvent<TileResult>) => {
-      if (e.data.id !== id) return;
+      // Use renderIdRef.current (not closure 'id') so that messages already queued by a
+      // terminated worker — but not yet processed — are rejected after cancelRender() fires.
+      if (e.data.id !== renderIdRef.current) return;
       const r = e.data;
       const img = new ImageData(new Uint8ClampedArray(r.buf.buffer as ArrayBuffer), r.tileW, r.tileH);
       canvasRef.current?.getContext('2d')!.putImageData(img, r.tileX, r.tileY);
