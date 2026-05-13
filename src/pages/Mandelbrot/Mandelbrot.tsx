@@ -67,9 +67,13 @@ export default function Mandelbrot() {
   const dragRef     = useRef<{ x: number; y: number } | null>(null);
   const zoomLabel   = useRef<HTMLSpanElement>(null);
   // Accumulated pan (px) since the last render started — used to skip clean tiles on drag
-  const panSinceRenderRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const panSinceRenderRef  = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   // Zoom level at the last render start — if it changed, all tiles are dirty
-  const renderZoomRef     = useRef<number>(INITIAL.zoom);
+  const renderZoomRef      = useRef<number>(INITIAL.zoom);
+  // Whether the last render completed fully — only skip clean tiles if it did
+  const renderCompleteRef  = useRef(false);
+  const tilesExpectedRef   = useRef(0);
+  const tilesReceivedRef   = useRef(0);
 
   // ── helpers ────────────────────────────────────────────────────────────────
 
@@ -98,11 +102,18 @@ export default function Mandelbrot() {
     cancelRender();
     if (zoomLabel.current) zoomLabel.current.textContent = fmtZoom(view.current.zoom);
 
-    // Only use dirty filtering when zoom hasn't changed since the last render
-    const sameZoom = view.current.zoom === renderZoomRef.current;
-    const dirty = (skipClean && sameZoom) ? { ...panSinceRenderRef.current } : undefined;
-    panSinceRenderRef.current = { x: 0, y: 0 };
-    renderZoomRef.current = view.current.zoom;
+    // Only skip clean tiles if: pan-only (zoom unchanged) AND last render fully completed.
+    // If the previous render was interrupted, the canvas is a quality mix — render everything.
+    const sameZoom    = view.current.zoom === renderZoomRef.current;
+    const canSkip     = skipClean && sameZoom && renderCompleteRef.current;
+    const dirty       = canSkip ? { ...panSinceRenderRef.current } : undefined;
+    panSinceRenderRef.current   = { x: 0, y: 0 };
+    renderZoomRef.current       = view.current.zoom;
+    renderCompleteRef.current   = false;
+
+    const tileList = buildTileList(canvas.width, canvas.height, dirty);
+    tilesExpectedRef.current = tileList.length;
+    tilesReceivedRef.current = 0;
 
     const id = ++renderIdRef.current;
     const w = new Worker(new URL('./mandelbrot.worker.ts', import.meta.url), { type: 'module' });
@@ -114,11 +125,15 @@ export default function Mandelbrot() {
       const img = new ImageData(new Uint8ClampedArray(r.buf.buffer as ArrayBuffer), r.tileW, r.tileH);
       canvasRef.current?.getContext('2d')!.putImageData(img, r.tileX, r.tileY);
       backRef.current?.getContext('2d')!.putImageData(img, r.tileX, r.tileY);
+      tilesReceivedRef.current++;
+      if (tilesReceivedRef.current >= tilesExpectedRef.current) {
+        renderCompleteRef.current = true; // all tiles received — canvas is uniform quality
+      }
     };
     workerRef.current = w;
 
     w.postMessage({
-      tileList: buildTileList(canvas.width, canvas.height, dirty),
+      tileList,
       canvasW: canvas.width, canvasH: canvas.height,
       ...view.current,
       maxIter: adaptiveMaxIter(view.current.zoom),
