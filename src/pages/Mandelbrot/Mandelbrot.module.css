@@ -7,10 +7,22 @@
 }
 
 .canvas {
+  position: absolute;
+  top: 0; left: 0;
   width: 100%;
   height: 100%;
   display: block;
   cursor: crosshair;
+  user-select: none;
+}
+
+.glCanvas {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none; /* CPU canvas always handles mouse events */
   user-select: none;
 }
 

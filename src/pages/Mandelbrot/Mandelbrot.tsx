@@ -4,6 +4,10 @@ import {
   ControlPanel, ControlGroup,
 } from '@/components/Controls';
 import type { PaletteId } from './mandelbrot.worker';
+import {
+  detectWebGL, createWebGLRenderer,
+  type WebGLRenderer, type GLRenderParams,
+} from './mandelbrot-webgl';
 import styles from './Mandelbrot.module.css';
 
 interface View { centerX: number; centerY: number; zoom: number; }
@@ -83,9 +87,12 @@ function fmtZoom(zoom: number): string {
 
 export default function Mandelbrot() {
   const canvasRef      = useRef<HTMLCanvasElement>(null);
+  const glCanvasRef    = useRef<HTMLCanvasElement>(null);
   const backRef        = useRef<HTMLCanvasElement | null>(null);
   const view           = useRef<View>({ ...INITIAL });
   const workersRef     = useRef<Worker[]>([]);
+  const webglRef       = useRef<WebGLRenderer | null>(null);
+  const useGPURef      = useRef(false);
   const renderIdRef    = useRef(0);
   const renderTimer    = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dragRef        = useRef<{ x: number; y: number } | null>(null);
@@ -112,6 +119,8 @@ export default function Mandelbrot() {
   const [juliaMode,     setJuliaMode]     = useState(false);
   const [juliaRe,       setJuliaRe]       = useState(-0.7);
   const [juliaIm,       setJuliaIm]       = useState(0.27015);
+  const [gpuAvailable,  setGpuAvailable]  = useState(false);
+  const [useGPU,        setUseGPU]        = useState(false);
 
   // Mutable ref read by startRender — avoids stale closures without needing
   // to recreate callbacks every time a UI param changes.
@@ -230,6 +239,38 @@ export default function Mandelbrot() {
     renderTimer.current = setTimeout(startRender, RENDER_DELAY);
   }, [startRender, clearTimer]);
 
+  /** Render the current view immediately via WebGL (GPU mode). */
+  const renderGPU = useCallback(() => {
+    const glCanvas = glCanvasRef.current;
+    const renderer = webglRef.current;
+    if (!glCanvas || !renderer) return;
+    if (zoomLabel.current) zoomLabel.current.textContent = fmtZoom(view.current.zoom);
+    const cp = cpRef.current;
+    const params: GLRenderParams = {
+      canvasW:      glCanvas.width,
+      canvasH:      glCanvas.height,
+      ...view.current,
+      maxIter:      cp.maxIterMode === 'auto'
+        ? adaptiveMaxIter(view.current.zoom)
+        : cp.maxIterManual,
+      paletteId:    cp.paletteId,
+      colorSpeed:   cp.colorSpeed,
+      colorOffset:  cp.colorOffset,
+      invertColors: cp.invertColors,
+      juliaMode:    cp.juliaMode,
+      juliaRe:      cp.juliaRe,
+      juliaIm:      cp.juliaIm,
+    };
+    renderer.render(params);
+    updateCrosshair();
+  }, [updateCrosshair]);
+
+  /** Render using whichever mode is currently active. */
+  const triggerRender = useCallback(() => {
+    if (useGPURef.current) renderGPU();
+    else startRender();
+  }, [renderGPU, startRender]);
+
   // ── canvas transforms (instant, no worker) ─────────────────────────────────
 
   const applyZoom = useCallback((factor: number, mx: number, my: number) => {
@@ -269,7 +310,21 @@ export default function Mandelbrot() {
 
   useEffect(() => {
     backRef.current = document.createElement('canvas');
-    return () => { cancelRender(); };
+    const available = detectWebGL();
+    setGpuAvailable(available);
+    if (available && glCanvasRef.current) {
+      try {
+        webglRef.current = createWebGLRenderer(glCanvasRef.current);
+      } catch (e) {
+        console.warn('WebGL renderer failed to initialise:', e);
+        setGpuAvailable(false);
+      }
+    }
+    return () => {
+      cancelRender();
+      webglRef.current?.dispose();
+      webglRef.current = null;
+    };
   }, [cancelRender]);
 
   useEffect(() => {
@@ -278,15 +333,19 @@ export default function Mandelbrot() {
     const ro = new ResizeObserver(() => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       const rect = canvas.getBoundingClientRect();
-      canvas.width  = (rect.width  * dpr) | 0;
-      canvas.height = (rect.height * dpr) | 0;
+      const w = (rect.width  * dpr) | 0;
+      const h = (rect.height * dpr) | 0;
+      canvas.width  = w;
+      canvas.height = h;
       const back = backRef.current;
-      if (back) { back.width = canvas.width; back.height = canvas.height; }
-      startRender();
+      if (back) { back.width = w; back.height = h; }
+      const glCanvas = glCanvasRef.current;
+      if (glCanvas) { glCanvas.width = w; glCanvas.height = h; }
+      triggerRender();
     });
     ro.observe(canvas);
     return () => ro.disconnect();
-  }, [startRender]);
+  }, [triggerRender]);
 
   // ── wheel ──────────────────────────────────────────────────────────────────
 
@@ -304,19 +363,23 @@ export default function Mandelbrot() {
       const mouseIm = centerY + (my - canvas.height * 0.5) / zoom;
       const factor  = e.deltaY < 0 ? 1.15 : 1 / 1.15;
       const newZoom = Math.max(100, Math.min(1e13, zoom * factor));
-      if (newZoom === zoom) return; // already at zoom limit — nothing changed, keep current render
+      if (newZoom === zoom) return;
       view.current  = {
         centerX: mouseRe - (mx - canvas.width  * 0.5) / newZoom,
         centerY: mouseIm - (my - canvas.height * 0.5) / newZoom,
         zoom: newZoom,
       };
-      cancelRender();   // stop any running render immediately
-      applyZoom(factor, mx, my);
-      scheduleRender(); // restart countdown
+      if (useGPURef.current) {
+        renderGPU(); // instant — no tile delay needed
+      } else {
+        cancelRender();
+        applyZoom(factor, mx, my);
+        scheduleRender();
+      }
     };
     canvas.addEventListener('wheel', onWheel, { passive: false });
     return () => canvas.removeEventListener('wheel', onWheel);
-  }, [applyZoom, scheduleRender, cancelRender]);
+  }, [applyZoom, scheduleRender, cancelRender, renderGPU]);
 
   // ── drag ───────────────────────────────────────────────────────────────────
 
@@ -326,7 +389,7 @@ export default function Mandelbrot() {
     const onDown = (e: MouseEvent) => {
       dragRef.current = dragStartRef.current = { x: e.clientX, y: e.clientY };
       canvas.style.cursor = 'grabbing';
-      cancelRender();
+      if (!useGPURef.current) cancelRender();
     };
     const onMove = (e: MouseEvent) => {
       if (!dragRef.current) return;
@@ -337,7 +400,11 @@ export default function Mandelbrot() {
       dragRef.current = { x: e.clientX, y: e.clientY };
       const { centerX, centerY, zoom } = view.current;
       view.current = { centerX: centerX - dx / zoom, centerY: centerY - dy / zoom, zoom };
-      applyPan(dx, dy);
+      if (useGPURef.current) {
+        renderGPU(); // re-render every frame — GPU is fast enough
+      } else {
+        applyPan(dx, dy);
+      }
     };
     const onUp = (e: MouseEvent) => {
       if (!dragRef.current) return;
@@ -359,10 +426,11 @@ export default function Mandelbrot() {
         cpRef.current.juliaIm = im;
         setJuliaRe(re);
         setJuliaIm(im);
-        startRender();
+        triggerRender();
         return;
       }
-      startRender(true);
+      // GPU already renders at full quality during drag; CPU needs a final full render.
+      if (!useGPURef.current) startRender(true);
     };
     canvas.addEventListener('mousedown', onDown);
     window.addEventListener('mousemove', onMove);
@@ -372,85 +440,95 @@ export default function Mandelbrot() {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup',   onUp);
     };
-  }, [applyPan, startRender, cancelRender]);
-
-  // ── reset ──────────────────────────────────────────────────────────────────
+  }, [applyPan, startRender, cancelRender, renderGPU, triggerRender]);
 
   const reset = useCallback(() => {
     view.current = { ...INITIAL };
-    startRender();
-  }, [startRender]);
+    triggerRender();
+  }, [triggerRender]);
 
   // ── color / quality param handlers ─────────────────────────────────────────
 
   const handlePaletteChange = useCallback((id: PaletteId) => {
     cpRef.current.paletteId = id;
     setPaletteId(id);
-    startRender();
-  }, [startRender]);
+    triggerRender();
+  }, [triggerRender]);
 
   const handleColorSpeedChange = useCallback((v: number) => {
     cpRef.current.colorSpeed = v;
     setColorSpeed(v);
-    startRender();
-  }, [startRender]);
+    triggerRender();
+  }, [triggerRender]);
 
   const handleColorOffsetChange = useCallback((v: number) => {
     cpRef.current.colorOffset = v;
     setColorOffset(v);
-    startRender();
-  }, [startRender]);
+    triggerRender();
+  }, [triggerRender]);
 
   const handleInvertChange = useCallback((v: boolean) => {
     cpRef.current.invertColors = v;
     setInvertColors(v);
-    startRender();
-  }, [startRender]);
+    triggerRender();
+  }, [triggerRender]);
 
   const handleMaxIterModeChange = useCallback((adaptive: boolean) => {
     const mode = adaptive ? 'auto' : 'manual';
     cpRef.current.maxIterMode = mode;
     setMaxIterMode(mode);
-    startRender();
-  }, [startRender]);
+    triggerRender();
+  }, [triggerRender]);
 
   const handleMaxIterManualChange = useCallback((v: number) => {
     cpRef.current.maxIterManual = v;
     cpRef.current.maxIterMode = 'manual';
     setMaxIterManual(v);
     setMaxIterMode('manual');
-    startRender();
-  }, [startRender]);
+    triggerRender();
+  }, [triggerRender]);
 
   const handleJuliaModeChange = useCallback((on: boolean) => {
     cpRef.current.juliaMode = on;
     setJuliaMode(on);
     if (on) view.current = { centerX: 0, centerY: 0, zoom: 250 };
     else view.current = { ...INITIAL };
-    startRender();
-  }, [startRender]);
+    triggerRender();
+  }, [triggerRender]);
 
   const handleJuliaReChange = useCallback((v: number) => {
     cpRef.current.juliaRe = v;
     setJuliaRe(v);
     updateCrosshair();
-    startRender();
-  }, [startRender, updateCrosshair]);
+    triggerRender();
+  }, [triggerRender, updateCrosshair]);
 
   const handleJuliaImChange = useCallback((v: number) => {
     cpRef.current.juliaIm = v;
     setJuliaIm(v);
     updateCrosshair();
-    startRender();
-  }, [startRender, updateCrosshair]);
+    triggerRender();
+  }, [triggerRender, updateCrosshair]);
 
   const goToPreset = useCallback((p: typeof PRESETS[number]) => {
     view.current = { centerX: p.centerX, centerY: p.centerY, zoom: p.zoom };
-    startRender();
-  }, [startRender]);
+    triggerRender();
+  }, [triggerRender]);
+
+  const handleGPUToggle = useCallback((on: boolean) => {
+    useGPURef.current = on;
+    setUseGPU(on);
+    if (on) {
+      cancelRender(); // stop any in-flight CPU render
+      renderGPU();
+    } else {
+      startRender();
+    }
+  }, [cancelRender, renderGPU, startRender]);
 
   const saveImage = useCallback(() => {
-    const canvas = canvasRef.current;
+    // In GPU mode the rendered image lives on the WebGL canvas.
+    const canvas = useGPURef.current ? glCanvasRef.current : canvasRef.current;
     if (!canvas) return;
     const a = document.createElement('a');
     a.href     = canvas.toDataURL('image/png');
@@ -460,7 +538,11 @@ export default function Mandelbrot() {
 
   return (
     <div className={styles.container}>
-      <canvas ref={canvasRef} className={styles.canvas} />
+      {/* GPU canvas sits behind; CPU canvas sits in front and always captures mouse events */}
+      <canvas ref={glCanvasRef} className={styles.glCanvas}
+        style={{ opacity: useGPU ? 1 : 0 }} />
+      <canvas ref={canvasRef} className={styles.canvas}
+        style={{ opacity: useGPU ? 0 : 1 }} />
 
       <div className={styles.sidebar}>
         <ControlPanel title="Explore">
@@ -537,6 +619,15 @@ export default function Mandelbrot() {
         </ControlPanel>
 
         <ControlPanel title="Quality" defaultOpen={false}>
+          <ControlGroup>
+            <Toggle
+              label="GPU Rendering"
+              value={useGPU}
+              onChange={handleGPUToggle}
+              disabled={!gpuAvailable}
+              description={gpuAvailable ? 'WebGL2 · instant re-render' : 'WebGL2 unavailable'}
+            />
+          </ControlGroup>
           <ControlGroup>
             <Toggle
               label="Adaptive Iterations"

@@ -5,6 +5,11 @@
   gap: var(--space-4);
 }
 
+.disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
 .text {
   display: flex;
   flex-direction: column;

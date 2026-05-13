@@ -5,11 +5,12 @@ interface ToggleProps {
   value: boolean;
   onChange: (value: boolean) => void;
   description?: string;
+  disabled?: boolean;
 }
 
-export default function Toggle({ label, value, onChange, description }: ToggleProps) {
+export default function Toggle({ label, value, onChange, description, disabled }: ToggleProps) {
   return (
-    <div className={styles.control}>
+    <div className={[styles.control, disabled ? styles.disabled : ''].join(' ')}>
       <div className={styles.text}>
         <span className={styles.label}>{label}</span>
         {description && <span className={styles.desc}>{description}</span>}
@@ -18,6 +19,7 @@ export default function Toggle({ label, value, onChange, description }: TogglePr
         type="button"
         role="switch"
         aria-checked={value}
+        disabled={disabled}
         className={[styles.track, value ? styles.on : ''].join(' ')}
         onClick={() => onChange(!value)}
       >
