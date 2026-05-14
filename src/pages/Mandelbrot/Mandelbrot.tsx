@@ -268,7 +268,19 @@ export default function Mandelbrot() {
       hpCenterY:    v.hpCY,
       skipOrbit,
     };
-    renderer.render(params);
+    try {
+      renderer.render(params);
+    } catch (e) {
+      console.error('[Mandelbrot] GPU render error, attempting recovery:', e);
+      // Recreate the renderer — the most likely cause is a lost WebGL context.
+      webglRef.current?.dispose();
+      webglRef.current = null;
+      const fresh = createWebGLRenderer(glCanvas);
+      if (fresh) {
+        webglRef.current = fresh;
+        try { fresh.render(params); } catch { /* give up */ }
+      }
+    }
     updateCrosshair();
   }, [updateCrosshair]);
 
@@ -333,12 +345,38 @@ export default function Mandelbrot() {
       useGPURef.current = false;
       setUseGPU(false);
     }
+
+    const glCanvas = glCanvasRef.current;
+    if (glCanvas) {
+      const onContextLost = (e: Event) => {
+        e.preventDefault(); // allow restoration
+        webglRef.current = null;
+      };
+      const onContextRestored = () => {
+        try {
+          webglRef.current = createWebGLRenderer(glCanvas);
+          renderGPU(false);
+        } catch (e) {
+          console.warn('WebGL context restore failed:', e);
+        }
+      };
+      glCanvas.addEventListener('webglcontextlost', onContextLost);
+      glCanvas.addEventListener('webglcontextrestored', onContextRestored);
+      return () => {
+        cancelRender();
+        webglRef.current?.dispose();
+        webglRef.current = null;
+        glCanvas.removeEventListener('webglcontextlost', onContextLost);
+        glCanvas.removeEventListener('webglcontextrestored', onContextRestored);
+      };
+    }
+
     return () => {
       cancelRender();
       webglRef.current?.dispose();
       webglRef.current = null;
     };
-  }, [cancelRender]);
+  }, [cancelRender, renderGPU]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -348,12 +386,19 @@ export default function Mandelbrot() {
       const rect = canvas.getBoundingClientRect();
       const w = (rect.width  * dpr) | 0;
       const h = (rect.height * dpr) | 0;
-      canvas.width  = w;
-      canvas.height = h;
-      const back = backRef.current;
-      if (back) { back.width = w; back.height = h; }
+      // Only reset canvas dimensions when they actually change — setting canvas.width/height
+      // unconditionally clears the drawing buffer and can cause WebGL context loss on some GPUs.
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width  = w;
+        canvas.height = h;
+        const back = backRef.current;
+        if (back) { back.width = w; back.height = h; }
+      }
       const glCanvas = glCanvasRef.current;
-      if (glCanvas) { glCanvas.width = w; glCanvas.height = h; }
+      if (glCanvas && (glCanvas.width !== w || glCanvas.height !== h)) {
+        glCanvas.width  = w;
+        glCanvas.height = h;
+      }
       triggerRender();
     });
     ro.observe(canvas);
@@ -508,26 +553,30 @@ export default function Mandelbrot() {
   const handlePaletteChange = useCallback((id: PaletteId) => {
     cpRef.current.paletteId = id;
     setPaletteId(id);
-    triggerRender();
-  }, [triggerRender]);
+    if (useGPURef.current) renderGPU(view.current.zoom > HP_THRESHOLD);
+    else startRender();
+  }, [renderGPU, startRender]);
 
   const handleColorSpeedChange = useCallback((v: number) => {
     cpRef.current.colorSpeed = v;
     setColorSpeed(v);
-    triggerRender();
-  }, [triggerRender]);
+    if (useGPURef.current) renderGPU(view.current.zoom > HP_THRESHOLD);
+    else startRender();
+  }, [renderGPU, startRender]);
 
   const handleColorOffsetChange = useCallback((v: number) => {
     cpRef.current.colorOffset = v;
     setColorOffset(v);
-    triggerRender();
-  }, [triggerRender]);
+    if (useGPURef.current) renderGPU(view.current.zoom > HP_THRESHOLD);
+    else startRender();
+  }, [renderGPU, startRender]);
 
   const handleInvertChange = useCallback((v: boolean) => {
     cpRef.current.invertColors = v;
     setInvertColors(v);
-    triggerRender();
-  }, [triggerRender]);
+    if (useGPURef.current) renderGPU(view.current.zoom > HP_THRESHOLD);
+    else startRender();
+  }, [renderGPU, startRender]);
 
   const handleMaxIterModeChange = useCallback((adaptive: boolean) => {
     const mode = adaptive ? 'auto' : 'manual';

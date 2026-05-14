@@ -291,7 +291,7 @@ void main() {
 
   const int N = 16;
   float t = mod(smooth_v * u_colorSpeed + u_colorOffset, float(N));
-  int   lo = int(t);
+  int   lo = clamp(int(t), 0, N - 1);
   int   hi = (lo + 1) % N;
   float f  = fract(t);
 
