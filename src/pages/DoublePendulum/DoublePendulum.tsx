@@ -165,6 +165,7 @@ export default function DoublePendulum() {
   const [showPhase,     setShowPhase]     = useState(true);
   const [showEnsemble,  setShowEnsemble]  = useState(false);
   const [gpuAvailable,  setGpuAvailable]  = useState(false);
+  const [activePreset,  setActivePreset]  = useState<number | null>(1); // 1 = Classic (matches defaults)
 
   // ── Refs ────────────────────────────────────────────────────────────────────
   const canvasRef      = useRef<HTMLCanvasElement>(null);
@@ -235,7 +236,13 @@ export default function DoublePendulum() {
     }
   }, [gpuParams]);
 
-  const goToPreset = useCallback((preset: typeof PRESETS[number]) => {
+  /** Wraps a setter so that manually dragging any slider clears the active preset. */
+  const clearPreset = useCallback((setter: (v: number) => void) => (v: number) => {
+    setter(v);
+    setActivePreset(null);
+  }, []);
+
+  const goToPreset = useCallback((preset: typeof PRESETS[number], idx: number) => {
     setTheta1(preset.theta1);
     setTheta2(preset.theta2);
     setOmega1(preset.omega1);
@@ -244,6 +251,7 @@ export default function DoublePendulum() {
     setL1(preset.l1);
     setL2(preset.l2);
     setSpread(DEFAULT_SPREAD);
+    setActivePreset(idx);
     // refRef and trail are reset by the useEffect that watches these state changes
   }, []);
 
@@ -633,13 +641,13 @@ export default function DoublePendulum() {
         <ControlPanel title="Presets">
           <ControlGroup>
             <div className={styles.snapGrid}>
-              {PRESETS.map(p => (
+              {PRESETS.map((p, idx) => (
                 <button
                   key={p.label}
-                  className={styles.snapBtn}
+                  className={`${styles.snapBtn}${activePreset === idx ? ` ${styles.snapBtnActive}` : ''}`}
                   type="button"
                   title={p.desc}
-                  onClick={() => goToPreset(p)}
+                  onClick={() => goToPreset(p, idx)}
                 >
                   {p.label}
                 </button>
@@ -652,43 +660,43 @@ export default function DoublePendulum() {
           <ControlGroup>
             <Slider
               label="Gravity g"
-              value={g} onChange={setG}
+              value={g} onChange={clearPreset(setG)}
               min={1} max={20} step={0.1}
               format={v => v.toFixed(1)} unit="m/s²"
             />
             <Slider
               label="Arm 1 length"
-              value={l1} onChange={setL1}
+              value={l1} onChange={clearPreset(setL1)}
               min={0.2} max={3} step={0.05}
               format={v => v.toFixed(2)} unit="m"
             />
             <Slider
               label="Arm 2 length"
-              value={l2} onChange={setL2}
+              value={l2} onChange={clearPreset(setL2)}
               min={0.2} max={3} step={0.05}
               format={v => v.toFixed(2)} unit="m"
             />
             <Slider
               label="θ₁"
-              value={theta1} onChange={setTheta1}
+              value={theta1} onChange={clearPreset(setTheta1)}
               min={-Math.PI} max={Math.PI} step={0.01}
               format={v => `${Math.round(v * DEG)}°`}
             />
             <Slider
               label="θ₂"
-              value={theta2} onChange={setTheta2}
+              value={theta2} onChange={clearPreset(setTheta2)}
               min={-Math.PI} max={Math.PI} step={0.01}
               format={v => `${Math.round(v * DEG)}°`}
             />
             <Slider
               label="ω₁"
-              value={omega1} onChange={setOmega1}
+              value={omega1} onChange={clearPreset(setOmega1)}
               min={-12} max={12} step={0.1}
               format={v => v.toFixed(1)} unit="rad/s"
             />
             <Slider
               label="ω₂"
-              value={omega2} onChange={setOmega2}
+              value={omega2} onChange={clearPreset(setOmega2)}
               min={-12} max={12} step={0.1}
               format={v => v.toFixed(1)} unit="rad/s"
             />
@@ -803,6 +811,11 @@ export default function DoublePendulum() {
           {showEnsemble && gpuAvailable && (
             <span className={styles.hudHint}>
               16 384 pendulums
+            </span>
+          )}
+          {activePreset !== null && (
+            <span className={styles.hudHint}>
+              {PRESETS[activePreset].desc}
             </span>
           )}
           <span className={styles.hudHint}>
