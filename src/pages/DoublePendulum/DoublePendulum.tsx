@@ -27,6 +27,47 @@ const DEFAULT_DECAY  = 0.94;
 const MAX_PHASE_PTS = 5_000;
 const BG_COLOR = '#050510';
 
+// ─── Presets ──────────────────────────────────────────────────────────────────
+
+const PRESETS = [
+  {
+    label: 'Gentle',
+    desc: 'Calm arcs, low energy',
+    theta1: 50 * RAD, theta2: -20 * RAD, omega1: 0, omega2: 0,
+    g: 9.81, dt: 0.001, speed: 1, decay: 0.94,
+  },
+  {
+    label: 'Classic',
+    desc: 'Textbook chaos starting position',
+    theta1: 120 * RAD, theta2: 120 * RAD, omega1: 0, omega2: 0,
+    g: 9.81, dt: 0.001, speed: 1, decay: 0.94,
+  },
+  {
+    label: 'Near Tip',
+    desc: 'Balanced near top — falls dramatically',
+    theta1: 175 * RAD, theta2: 5 * RAD, omega1: 0, omega2: 0,
+    g: 9.81, dt: 0.001, speed: 1, decay: 0.96,
+  },
+  {
+    label: 'Mirror',
+    desc: 'Symmetric arms, beautiful folded trails',
+    theta1: 110 * RAD, theta2: -110 * RAD, omega1: 0, omega2: 0,
+    g: 9.81, dt: 0.001, speed: 1, decay: 0.95,
+  },
+  {
+    label: 'Windmill',
+    desc: 'Angular momentum sends arm spinning',
+    theta1: 20 * RAD, theta2: 20 * RAD, omega1: 6, omega2: 0,
+    g: 9.81, dt: 0.001, speed: 1, decay: 0.93,
+  },
+  {
+    label: 'Freefall',
+    desc: 'Straight down, pure velocity — maximum chaos',
+    theta1: 0, theta2: 0, omega1: 8, omega2: 0,
+    g: 9.81, dt: 0.001, speed: 1, decay: 0.92,
+  },
+] as const;
+
 // ─── CPU RK4 (reference pendulum) ─────────────────────────────────────────────
 
 function cpuRK4(
@@ -145,7 +186,18 @@ export default function DoublePendulum() {
     }
   }, [gpuParams]);
 
-  // ── GPU init ────────────────────────────────────────────────────────────────
+  const goToPreset = useCallback((preset: typeof PRESETS[number]) => {
+    setTheta1(preset.theta1);
+    setTheta2(preset.theta2);
+    setOmega1(preset.omega1);
+    setOmega2(preset.omega2);
+    setG(preset.g);
+    setDt(preset.dt);
+    setSpeed(preset.speed);
+    setDecay(preset.decay);
+    // refRef and trail are reset by the useEffect that watches these state changes
+  }, []);
+
 
   useEffect(() => {
     const available = detectWebGL2();
@@ -442,6 +494,24 @@ export default function DoublePendulum() {
 
       {/* ── Floating sidebar ───────────────────────────────────────────────── */}
       <div ref={sidebarRef} className={styles.sidebar}>
+
+        <ControlPanel title="Presets">
+          <ControlGroup>
+            <div className={styles.snapGrid}>
+              {PRESETS.map(p => (
+                <button
+                  key={p.label}
+                  className={styles.snapBtn}
+                  type="button"
+                  title={p.desc}
+                  onClick={() => goToPreset(p)}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </ControlGroup>
+        </ControlPanel>
 
         <ControlPanel title="Physics">
           <ControlGroup>
