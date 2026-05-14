@@ -8,6 +8,7 @@ const ControlsTest = lazy(() => import('@/pages/ControlsTest/ControlsTest'));
 const Lorenz          = lazy(() => import('@/pages/Lorenz/Lorenz'));
 const Mandelbrot      = lazy(() => import('@/pages/Mandelbrot/Mandelbrot'));
 const DoublePendulum  = lazy(() => import('@/pages/DoublePendulum/DoublePendulum'));
+const Cardioid        = lazy(() => import('@/pages/Cardioid/Cardioid'));
 
 function Lazy({ children }: { children: ReactNode }) {
   return (
@@ -25,7 +26,7 @@ export const router = createBrowserRouter([
       { index: true, element: <Lazy><Home /></Lazy> },
       { path: 'lorenz', element: <Lazy><Lorenz /></Lazy> },
       { path: 'mandelbrot', element: <Lazy><Mandelbrot /></Lazy> },
-      { path: 'cardioid', element: <Lazy><ComingSoon /></Lazy> },
+      { path: 'cardioid', element: <Lazy><Cardioid /></Lazy> },
       { path: 'bifurcation', element: <Lazy><ComingSoon /></Lazy> },
       { path: 'double-pendulum', element: <Lazy><DoublePendulum /></Lazy> },
       { path: 'controls-test', element: <Lazy><ControlsTest /></Lazy> },
