@@ -24,6 +24,7 @@ const NAV: NavSection[] = [
     section: 'Fractals',
     items: [
       { path: '/mandelbrot',      label: 'Mandelbrot Set',     symbol: '∞' },
+      { path: '/koch',            label: 'Koch Snowflake',     symbol: '❄' },
     ],
   },
   {

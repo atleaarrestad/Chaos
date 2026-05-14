@@ -48,6 +48,15 @@ const EXPLORATIONS: Exploration[] = [
     color: 'var(--col-bifurcation)',
   },
   {
+    path: '/koch',
+    title: 'Koch Snowflake',
+    category: 'Fractal',
+    description:
+      'An infinite perimeter enclosing a finite area. Each edge of an equilateral triangle repeatedly sprouts smaller triangles — revealing self-similarity at every scale.',
+    symbol: '❄',
+    color: 'var(--col-koch)',
+  },
+  {
     path: '/double-pendulum',
     title: 'Double Pendulum',
     category: 'Attractor',
