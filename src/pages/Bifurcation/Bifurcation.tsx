@@ -37,6 +37,31 @@ const PRESETS: Preset[] = [
   { label: 'Deep',     rMin: 3.856,  rMax: 3.862,  desc: 'r ∈ [3.856, 3.862] — deep self-similar structure'},
 ];
 
+// ─── Axis helpers ─────────────────────────────────────────────────────────────
+
+function niceTicks(min: number, max: number, target = 5): number[] {
+  const range = max - min;
+  if (range <= 0 || !isFinite(range)) return [];
+  const raw = range / target;
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const norm = raw / mag;
+  const step = norm < 1.5 ? mag : norm < 3.5 ? 2 * mag : norm < 7.5 ? 5 * mag : 10 * mag;
+  if (!isFinite(step) || step <= 0) return [];
+  const first = Math.ceil(min / step) * step;
+  const ticks: number[] = [];
+  for (let i = 0; i < 20; i++) {
+    const v = Math.round((first + i * step) / step) * step;
+    if (v > max + step * 1e-9) break;
+    ticks.push(v);
+  }
+  return ticks;
+}
+
+function fmtTick(v: number, step: number): string {
+  const d = Math.max(0, Math.ceil(-Math.log10(step)));
+  return v.toFixed(d);
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function Bifurcation() {
@@ -65,6 +90,7 @@ export default function Bifurcation() {
   const [useGPU,       setUseGPU]       = useState(false);
   const [zoomHistory,  setZoomHistory]  = useState<ZoomState[]>([]);
   const [hoverR,       setHoverR]       = useState<number | null>(null);
+  const [hoverX,       setHoverX]       = useState<number | null>(null);
   const [sidebarOpen,  setSidebarOpen]  = useState(true);
 
   // Drag-to-zoom selection rect (CSS pixels relative to the interaction layer)
@@ -275,9 +301,10 @@ export default function Bifurcation() {
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
 
-    // Update hover r readout
-    const { rMin, rMax } = pRef.current;
+    // Update hover readout
+    const { rMin, rMax, yMin, yMax } = pRef.current;
     setHoverR(rMin + (mx / rect.width) * (rMax - rMin));
+    setHoverX(yMax - (my / rect.height) * (yMax - yMin));
 
     if (!dragStartRef.current) return;
     const { x: x0, y: y0 } = dragStartRef.current;
@@ -329,6 +356,7 @@ export default function Bifurcation() {
 
   const handleMouseLeave = useCallback(() => {
     setHoverR(null);
+    setHoverX(null);
     dragStartRef.current = null;
     setSelRect(null);
   }, []);
@@ -367,7 +395,10 @@ export default function Bifurcation() {
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
-  const showHud = yMin !== 0 || yMax !== 1;
+  const rTicks = niceTicks(rMin, rMax, 4);
+  const xTicks = niceTicks(yMin, yMax, 5);
+  const rStep = rTicks.length > 1 ? rTicks[1] - rTicks[0] : rMax - rMin;
+  const xStep = xTicks.length > 1 ? xTicks[1] - xTicks[0] : yMax - yMin;
 
   return (
     <div className={styles.container}>
@@ -400,6 +431,40 @@ export default function Bifurcation() {
           />
         )}
       </div>
+
+      {/* Axis overlay — tick marks and labels for r (x-axis) and x/population (y-axis) */}
+      <svg className={styles.axisOverlay} aria-hidden="true">
+        {rTicks.map(rv => {
+          const xp = (rv - rMin) / (rMax - rMin) * 100;
+          if (xp < 0.5 || xp > 99.5) return null;
+          return (
+            <g key={`r${rv}`}>
+              <line x1={`${xp}%`} y1="94%" x2={`${xp}%`} y2="97%"
+                    stroke="rgba(255,255,255,0.2)" strokeWidth="1" />
+              <text x={`${xp}%`} y="93%"
+                    textAnchor="middle" dominantBaseline="auto"
+                    fill="rgba(255,255,255,0.5)" fontSize="10" fontFamily="monospace">
+                {fmtTick(rv, rStep)}
+              </text>
+            </g>
+          );
+        })}
+        {xTicks.map(xv => {
+          const yp = (1 - (xv - yMin) / (yMax - yMin)) * 100;
+          if (yp < 1 || yp > 92) return null;
+          return (
+            <g key={`x${xv}`}>
+              <line x1="0" y1={`${yp}%`} x2="7" y2={`${yp}%`}
+                    stroke="rgba(255,255,255,0.2)" strokeWidth="1" />
+              <text x="10" y={`${yp}%`}
+                    textAnchor="start" dominantBaseline="middle"
+                    fill="rgba(255,255,255,0.5)" fontSize="10" fontFamily="monospace">
+                {fmtTick(xv, xStep)}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
 
       {/* Sidebar collapse toggle — always visible, slides with sidebar */}
       <button
@@ -519,13 +584,12 @@ export default function Bifurcation() {
         <div className={styles.hudLeft}>
           <span className={styles.hudTitle}>Bifurcation</span>
           <span className={styles.hudSub}>
-            r ∈ [{rMin.toFixed(3)}, {rMax.toFixed(3)}]
-            {showHud && ` · x ∈ [${yMin.toFixed(3)}, ${yMax.toFixed(3)}]`}
+            r ∈ [{rMin.toFixed(3)}, {rMax.toFixed(3)}] · x ∈ [{yMin.toFixed(3)}, {yMax.toFixed(3)}]
           </span>
         </div>
         <div className={styles.hudRight}>
-          {hoverR !== null && (
-            <span className={styles.hudHover}>r = {hoverR.toFixed(4)}</span>
+          {hoverR !== null && hoverX !== null && (
+            <span className={styles.hudHover}>r={hoverR.toFixed(4)}  x={hoverX.toFixed(4)}</span>
           )}
           <span className={styles.hudHint}>
             {activePreset !== null ? PRESETS[activePreset].desc : 'drag to zoom · scroll to zoom · logistic map x → r·x·(1−x)'}
