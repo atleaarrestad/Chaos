@@ -14,15 +14,15 @@ const STEPS_PER_FRAME = 4; // must match GPU shader MAX_STEPS usage
 const RAD = Math.PI / 180;
 const DEG = 180 / Math.PI;
 
-const DEFAULT_THETA1 = 120 * RAD;  // 120° – classical chaotic regime
-const DEFAULT_THETA2 = 120 * RAD;
+const DEFAULT_THETA1 = 50 * RAD;   // gentle swing, below flip threshold
+const DEFAULT_THETA2 = -20 * RAD;  // slight offset on second rod
 const DEFAULT_OMEGA1 = 0;
 const DEFAULT_OMEGA2 = 0;
 const DEFAULT_G      = 9.81;
-const DEFAULT_DT     = 0.008;
-const DEFAULT_SPEED  = 2;        // gpu.step() calls per rAF
-const DEFAULT_SPREAD = 0.01;     // initial θ₁ spread (radians)
-const DEFAULT_DECAY  = 0.92;     // trail persistence per frame
+const DEFAULT_DT     = 0.001;
+const DEFAULT_SPEED  = 1;          // real-time by default
+const DEFAULT_SPREAD = 0.01;
+const DEFAULT_DECAY  = 0.94;
 
 const MAX_PHASE_PTS = 5_000;
 const BG_COLOR = '#050510';
@@ -489,8 +489,8 @@ export default function DoublePendulum() {
             <Slider
               label="dt"
               value={dt} onChange={setDt}
-              min={0.001} max={0.02} step={0.001}
-              format={v => v.toFixed(3)}
+              min={0.0005} max={0.005} step={0.0005}
+              format={v => v.toFixed(4)}
             />
             <Slider
               label="Trail"
