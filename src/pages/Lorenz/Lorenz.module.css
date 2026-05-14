@@ -48,7 +48,8 @@
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: rgba(210, 220, 255, 0.75);
-  white-space: nowrap;
+  white-space: normal;
+  word-break: break-word;
   letter-spacing: 0.02em;
   line-height: 1.7;
 }
