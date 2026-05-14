@@ -31,6 +31,27 @@
   scrollbar-color: var(--border) transparent;
 }
 
+/* ─── Equation block ─────────────────────────────────────────────────────── */
+
+.equationBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-3) var(--space-4);
+  background: rgba(255, 255, 255, 0.03);
+  border-left: 2px solid var(--eq-accent, var(--accent));
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  margin: 0 var(--space-4);
+}
+
+.equationLine {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: rgba(210, 220, 255, 0.75);
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+  line-height: 1.7;
+}
 .resetBtn {
   width: 100%;
   padding: var(--space-3) var(--space-4);
@@ -137,6 +158,90 @@
 .addBtn:hover {
   background: rgba(129, 140, 248, 0.15);
   border-color: var(--col-lorenz);
+}
+
+/* ─── Instance tabs ──────────────────────────────────────────────────────── */
+
+.instanceTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-4) 0;
+}
+
+.instanceTab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  color: var(--text-subtle);
+  font-size: var(--text-xs);
+  font-family: var(--font-sans);
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+  transition: background var(--ease-fast), border-color var(--ease-fast), color var(--ease-fast);
+}
+
+.instanceTab:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: var(--text);
+}
+
+.instanceTabActive {
+  border-color: var(--tab-color);
+  color: var(--tab-color);
+  background: color-mix(in srgb, var(--tab-color) 14%, transparent);
+}
+
+.instanceTabDot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+.instanceTabRemove {
+  font-size: 9px;
+  opacity: 0;
+  margin-left: 1px;
+  padding: 1px 2px;
+  border-radius: var(--radius-sm);
+  transition: opacity var(--ease-fast), color var(--ease-fast);
+  cursor: pointer;
+}
+
+.instanceTab:hover .instanceTabRemove {
+  opacity: 0.6;
+}
+
+.instanceTabRemove:hover {
+  opacity: 1 !important;
+  color: #f87171;
+}
+
+.instanceTabAdd {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px dashed rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-full);
+  color: var(--text-subtle);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: background var(--ease-fast), border-color var(--ease-fast), color var(--ease-fast);
+}
+
+.instanceTabAdd:hover {
+  background: rgba(129, 140, 248, 0.12);
+  border-color: var(--col-lorenz);
+  color: var(--col-lorenz);
 }
 
 
@@ -369,3 +474,4 @@
   color: rgba(255, 175, 80, 0.9);
   text-shadow: 0 0 5px rgba(0, 0, 0, 0.95), 0 1px 2px rgba(0, 0, 0, 0.8);
 }
+

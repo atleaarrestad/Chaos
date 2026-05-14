@@ -16,9 +16,8 @@ const NAV: NavSection[] = [
   {
     section: 'Attractors',
     items: [
-      { path: '/lorenz',      label: 'Lorenz Attractor',  symbol: 'σ' },
-      { path: '/double-pendulum', label: 'Double Pendulum', symbol: 'g' },
-      { path: '/attractors',  label: 'Strange Attractors', symbol: '∿' },
+      { path: '/lorenz',          label: 'Strange Attractors', symbol: '∿' },
+      { path: '/double-pendulum', label: 'Double Pendulum',    symbol: 'g' },
     ],
   },
   {
@@ -84,3 +83,4 @@ export default function Sidebar() {
     </aside>
   );
 }
+

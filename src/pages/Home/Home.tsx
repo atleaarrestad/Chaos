@@ -13,11 +13,11 @@ interface Exploration {
 const EXPLORATIONS: Exploration[] = [
   {
     path: '/lorenz',
-    title: 'Lorenz Attractor',
+    title: 'Strange Attractors',
     category: 'Attractor',
     description:
-      'A butterfly-shaped trajectory in phase space, born from three simple differential equations. Sensitive to initial conditions — the hallmark of chaos.',
-    symbol: 'σ',
+      'Six strange attractors — Lorenz, Rössler, Halvorsen, Thomas, Aizawa, Dadras. Each born from three equations yet producing infinitely complex, never-repeating orbits.',
+    symbol: '∿',
     color: 'var(--col-lorenz)',
   },
   {
@@ -64,15 +64,6 @@ const EXPLORATIONS: Exploration[] = [
       'Two linked pendulums with unpredictable, swirling motion. A deceptively simple mechanical system that produces genuinely chaotic trajectories.',
     symbol: 'g',
     color: 'var(--col-pendulum)',
-  },
-  {
-    path: '/attractors',
-    title: 'Strange Attractors',
-    category: 'Gallery',
-    description:
-      'Rössler, Halvorsen, Thomas, Aizawa, Dadras — five distinct strange attractors, each born from three simple equations. Select, explore, and tune their parameters.',
-    symbol: '∿',
-    color: 'var(--col-attractors)',
   },
 ];
 
