@@ -16,19 +16,47 @@
 /* ─── Floating sidebar ───────────────────────────────────────────────────── */
 
 .sidebar {
-  position: absolute;
+  position: fixed;
   top: var(--space-4);
   right: var(--space-4);
   width: 272px;
-  max-height: calc(100% - var(--space-8) - 60px);
-  overflow-y: auto;
-  overflow-x: hidden;
+  height: calc(100vh - var(--space-8) - 64px);
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
   z-index: 10;
+}
+
+/* Scrollable panels region */
+.sidebarPanels {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
   scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
+  scrollbar-color: var(--border-hover) transparent;
+}
+
+.sidebarPanels > * + * {
+  margin-top: var(--space-2);
+}
+
+.sidebarPanels::-webkit-scrollbar {
+  width: 4px;
+}
+
+.sidebarPanels::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebarPanels::-webkit-scrollbar-thumb {
+  background: var(--border-hover);
+  border-radius: var(--radius-full);
+}
+
+/* Reset button pinned at the bottom */
+.sidebarActions {
+  flex-shrink: 0;
 }
 
 /* ─── Equation block ─────────────────────────────────────────────────────── */

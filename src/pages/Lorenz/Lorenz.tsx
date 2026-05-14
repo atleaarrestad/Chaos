@@ -1127,6 +1127,7 @@ export default function Lorenz() {
       <canvas ref={canvasRef} className={styles.canvas} />
 
       <div ref={sidebarRef} className={styles.sidebar}>
+        <div className={styles.sidebarPanels}>
         <ControlPanel title="Attractor">
           <ControlGroup>
             <SelectControl
@@ -1312,9 +1313,13 @@ export default function Lorenz() {
           ))}
         </div>
 
+        </div>{/* end sidebarPanels */}
+
+        <div className={styles.sidebarActions}>
         <button className={styles.resetBtn} type="button" onClick={reset}>
           Reset Trajectory
         </button>
+        </div>
       </div>
 
       <div className={styles.hud}>
