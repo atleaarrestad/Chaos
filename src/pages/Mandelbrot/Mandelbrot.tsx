@@ -128,12 +128,14 @@ export default function Mandelbrot() {
   const [animating,        setAnimating]        = useState(false);
   const [animMode,         setAnimMode]         = useState<'zoom' | 'julia' | 'both'>('zoom');
   const [animSpeed,        setAnimSpeed]        = useState(0.5);
+  const [animZoomDir,      setAnimZoomDir]      = useState<'in' | 'out' | 'pingpong'>('pingpong');
   const [juliaOrbitRadius, setJuliaOrbitRadius] = useState(0.7);
   const [colorCycle,       setColorCycle]       = useState(false);
 
   // Animation refs — read inside rAF loop to avoid stale closures
   const animModeRef          = useRef<'zoom' | 'julia' | 'both'>('zoom');
   const animSpeedRef         = useRef(0.5);
+  const animZoomDirRef       = useRef<'in' | 'out' | 'pingpong'>('pingpong');
   const juliaOrbitRadiusRef  = useRef(0.7);
   const juliaAngleRef        = useRef(0.0);
   const colorCycleRef        = useRef(false);
@@ -586,8 +588,8 @@ export default function Mandelbrot() {
 
   // ── animation loop ─────────────────────────────────────────────────────────
 
-  /** Maximum zoom depth for the ping-pong zoom animation (well below HP threshold). */
-  const ANIM_MAX_ZOOM = 5e8;
+  /** Maximum zoom depth for the animation — matches the GPU manual zoom ceiling. */
+  const ANIM_MAX_ZOOM = 1e28;
 
   useEffect(() => {
     if (!animating) return;
@@ -618,12 +620,17 @@ export default function Mandelbrot() {
       const mode  = animModeRef.current;
       const speed = animSpeedRef.current;
 
-      // Ping-pong zoom
+      // Zoom
       if (mode === 'zoom' || mode === 'both') {
+        const zoomMode = animZoomDirRef.current;
+        if (zoomMode === 'in')       zoomDirRef.current =  1;
+        else if (zoomMode === 'out') zoomDirRef.current = -1;
+        // 'pingpong': zoomDirRef flips at the limits (below)
+
         const factor  = Math.pow(2, speed * 0.8 * zoomDirRef.current * dt);
         const newZoom = view.current.zoom * factor;
-        if (newZoom > ANIM_MAX_ZOOM) zoomDirRef.current = -1;
-        else if (newZoom < INITIAL.zoom) zoomDirRef.current = 1;
+        if (newZoom > ANIM_MAX_ZOOM && zoomMode === 'pingpong') zoomDirRef.current = -1;
+        else if (newZoom < INITIAL.zoom && zoomMode === 'pingpong') zoomDirRef.current = 1;
         view.current = {
           ...view.current,
           zoom:  Math.max(INITIAL.zoom, Math.min(ANIM_MAX_ZOOM, newZoom)),
@@ -673,6 +680,14 @@ export default function Mandelbrot() {
       triggerRender();
     }
   }, [triggerRender]);
+
+  const handleAnimZoomDirChange = useCallback((v: 'in' | 'out' | 'pingpong') => {
+    animZoomDirRef.current = v;
+    setAnimZoomDir(v);
+    // Prime the pingpong direction based on current zoom
+    if (v === 'in')  zoomDirRef.current =  1;
+    if (v === 'out') zoomDirRef.current = -1;
+  }, []);
 
   const handleAnimSpeedChange = useCallback((v: number) => {
     animSpeedRef.current = v;
@@ -897,6 +912,18 @@ export default function Mandelbrot() {
                 { value: 'both'  as const, label: 'Zoom + Julia' },
               ]}
             />
+            {(animMode === 'zoom' || animMode === 'both') && (
+              <SelectControl
+                label="Zoom Direction"
+                value={animZoomDir}
+                onChange={handleAnimZoomDirChange}
+                options={[
+                  { value: 'pingpong' as const, label: 'Ping-pong' },
+                  { value: 'in'       as const, label: 'Zoom in' },
+                  { value: 'out'      as const, label: 'Zoom out' },
+                ]}
+              />
+            )}
           </ControlGroup>
           <ControlGroup>
             <Slider
