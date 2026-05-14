@@ -14,15 +14,15 @@ const STEPS_PER_FRAME = 4; // must match GPU shader MAX_STEPS usage
 const RAD = Math.PI / 180;
 const DEG = 180 / Math.PI;
 
-const DEFAULT_THETA1 = 50 * RAD;   // gentle swing, below flip threshold
-const DEFAULT_THETA2 = -20 * RAD;  // slight offset on second rod
+const DEFAULT_THETA1 = 120 * RAD;  // Classic preset is the default
+const DEFAULT_THETA2 = 120 * RAD;
 const DEFAULT_OMEGA1 = 0;
 const DEFAULT_OMEGA2 = 0;
 const DEFAULT_G      = 9.81;
 const DEFAULT_DT     = 0.001;
 const DEFAULT_SPEED  = 1;          // real-time by default
 const DEFAULT_SPREAD = 0.01;
-const DEFAULT_TRAIL  = 15.0;  // seconds of trail
+const DEFAULT_TRAIL  = 20.0;
 const DEFAULT_L1     = 1.0;   // arm 1 length (relative)
 const DEFAULT_L2     = 1.0;   // arm 2 length (relative)
 
@@ -38,37 +38,37 @@ const PRESETS = [
     label: 'Gentle',
     desc: 'Calm arcs, low energy',
     theta1: 50 * RAD, theta2: -20 * RAD, omega1: 0, omega2: 0,
-    g: 9.81, dt: 0.001, speed: 1, trailSecs: 4,
+    g: 9.81, l1: 1.0, l2: 1.0,
   },
   {
     label: 'Classic',
-    desc: 'Textbook chaos starting position',
+    desc: 'Textbook chaos — equal arms, symmetric start',
     theta1: 120 * RAD, theta2: 120 * RAD, omega1: 0, omega2: 0,
-    g: 9.81, dt: 0.001, speed: 1, trailSecs: 6,
+    g: 9.81, l1: 1.0, l2: 1.0,
   },
   {
     label: 'Near Tip',
-    desc: 'Balanced near top — falls dramatically',
+    desc: 'Balanced near top — short inner arm sharpens the fall',
     theta1: 175 * RAD, theta2: 5 * RAD, omega1: 0, omega2: 0,
-    g: 9.81, dt: 0.001, speed: 1, trailSecs: 8,
+    g: 9.81, l1: 0.8, l2: 1.2,
   },
   {
     label: 'Mirror',
     desc: 'Symmetric arms, beautiful folded trails',
     theta1: 110 * RAD, theta2: -110 * RAD, omega1: 0, omega2: 0,
-    g: 9.81, dt: 0.001, speed: 1, trailSecs: 6,
+    g: 9.81, l1: 1.0, l2: 1.0,
   },
   {
     label: 'Windmill',
-    desc: 'Angular momentum sends arm spinning',
+    desc: 'Long outer arm amplifies spinning momentum',
     theta1: 20 * RAD, theta2: 20 * RAD, omega1: 6, omega2: 0,
-    g: 9.81, dt: 0.001, speed: 1, trailSecs: 5,
+    g: 9.81, l1: 0.7, l2: 1.3,
   },
   {
     label: 'Freefall',
-    desc: 'Straight down, pure velocity — maximum chaos',
+    desc: 'Straight down, pure velocity — long outer arm for wider chaos',
     theta1: 0, theta2: 0, omega1: 8, omega2: 0,
-    g: 9.81, dt: 0.001, speed: 1, trailSecs: 4,
+    g: 9.81, l1: 1.0, l2: 1.5,
   },
 ] as const;
 
@@ -210,9 +210,8 @@ export default function DoublePendulum() {
     setOmega1(preset.omega1);
     setOmega2(preset.omega2);
     setG(preset.g);
-    setDt(preset.dt);
-    setSpeed(preset.speed);
-    setTrailSecs(preset.trailSecs);
+    setL1(preset.l1);
+    setL2(preset.l2);
     // refRef and trail are reset by the useEffect that watches these state changes
   }, []);
 
@@ -738,8 +737,8 @@ export default function DoublePendulum() {
                 </button>
                 <div className={styles.infoTooltip}>
                   θ₁ (horizontal, −π to π) vs ω₁ (vertical, angular velocity of rod 1).
-                  The reference pendulum traces its trajectory through phase space —
-                  chaotic motion fills the accessible region irregularly,
+                  The reference pendulum traces its trajectory through phase space.
+                  Chaotic motion fills the accessible region irregularly,
                   while periodic motion forms closed loops.
                 </div>
               </div>
