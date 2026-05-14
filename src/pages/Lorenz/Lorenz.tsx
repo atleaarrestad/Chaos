@@ -694,10 +694,10 @@ export default function Lorenz() {
     if (showPoincare) {
       const pc = poincarePanelRef.current;
       if (pc && pc.clientWidth > 0) {
-        if (pc.width !== pc.clientWidth || pc.height !== pc.clientHeight) {
-          pc.width  = pc.clientWidth;
-          pc.height = pc.clientHeight;
-        }
+        const panelDpr = Math.min(window.devicePixelRatio || 1, 2);
+        const pw = Math.round(pc.clientWidth  * panelDpr);
+        const ph = Math.round(pc.clientHeight * panelDpr);
+        if (pc.width !== pw || pc.height !== ph) { pc.width = pw; pc.height = ph; }
         const cw = pc.width, ch = pc.height;
         const pCtx = pc.getContext('2d');
         if (pCtx) {
@@ -726,13 +726,13 @@ export default function Lorenz() {
 
             const axX = Math.max(0, Math.min(cw, pcx + (0 - cU) / (rangeU / 2) * half));
             const axY = Math.max(0, Math.min(ch, pcy - (0 - cV) / (rangeV / 2) * half));
-            pCtx.strokeStyle = 'rgba(255,255,255,0.1)';
-            pCtx.lineWidth = 0.5;
+            pCtx.strokeStyle = 'rgba(255,255,255,0.15)';
+            pCtx.lineWidth = 1;
             pCtx.beginPath(); pCtx.moveTo(0, axY);  pCtx.lineTo(cw, axY);  pCtx.stroke();
             pCtx.beginPath(); pCtx.moveTo(axX, 0);  pCtx.lineTo(axX, ch);  pCtx.stroke();
 
             if (!hasData) {
-              pCtx.fillStyle = 'rgba(180,190,230,0.3)';
+              pCtx.fillStyle = 'rgba(180,190,230,0.65)';
               pCtx.font = `${Math.round(Math.min(cw, ch) * 0.07)}px system-ui, sans-serif`;
               pCtx.textAlign = 'center'; pCtx.textBaseline = 'middle';
               pCtx.fillText('waiting for crossings…', pcx, pcy);
@@ -763,10 +763,10 @@ export default function Lorenz() {
     if (showReturnMap && gpu) {
       const rc = returnMapPanelRef.current;
       if (rc && rc.clientWidth > 0) {
-        if (rc.width !== rc.clientWidth || rc.height !== rc.clientHeight) {
-          rc.width  = rc.clientWidth;
-          rc.height = rc.clientHeight;
-        }
+        const panelDpr = Math.min(window.devicePixelRatio || 1, 2);
+        const rw = Math.round(rc.clientWidth  * panelDpr);
+        const rh = Math.round(rc.clientHeight * panelDpr);
+        if (rc.width !== rw || rc.height !== rh) { rc.width = rw; rc.height = rh; }
         const rCtx = rc.getContext('2d');
         if (rCtx) gpu.drawPanel(rCtx, 1, 0, 0, rc.width, rc.height);
       }
@@ -996,10 +996,10 @@ export default function Lorenz() {
             <div className={`${styles.analysisPanel} ${styles.analysisPanelReturn}`}>
               <div className={styles.panelHeader}>
                 <span className={`${styles.panelTitle} ${styles.panelTitleReturn}`}>
-                  Return map — z<sub>n+1</sub> vs z<sub>n</sub>
+                  Return map: z<sub>n+1</sub> vs z<sub>n</sub>
                 </span>
                 <div className={styles.infoBtnWrapper}>
-                  <button className={styles.infoBtn} type="button" aria-label="About return map">ⓘ</button>
+                  <button className={styles.infoBtn} type="button" aria-label="About return map">i</button>
                   <div className={styles.infoTooltip}>
                     Each point (z<sub>n</sub>,&thinsp;z<sub>n+1</sub>) plots successive local z&#8209;maxima
                     against each other. The tent&#8209;map shape confirms deterministic chaos:
@@ -1019,10 +1019,10 @@ export default function Lorenz() {
             <div className={styles.analysisPanel}>
               <div className={styles.panelHeader}>
                 <span className={styles.panelTitle}>
-                  Poincaré — {sectionAxis}&thinsp;=&thinsp;{poincareZ}
+                  Poincaré: {sectionAxis} = {poincareZ}
                 </span>
                 <div className={styles.infoBtnWrapper}>
-                  <button className={styles.infoBtn} type="button" aria-label="About Poincaré section">ⓘ</button>
+                  <button className={styles.infoBtn} type="button" aria-label="About Poincaré section">i</button>
                   <div className={styles.infoTooltip}>
                     Records each crossing of the {sectionAxis}&thinsp;=&thinsp;{poincareZ} plane.
                     The crossing points form a fractal curve, revealing the attractor&rsquo;s

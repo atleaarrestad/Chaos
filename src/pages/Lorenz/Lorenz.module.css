@@ -224,38 +224,40 @@
 }
 
 .analysisPanel {
-  width: clamp(200px, 27vmin, 300px);
-  background: rgba(8, 8, 18, 0.92);
-  border: 1px solid rgba(129, 140, 248, 0.35);
+  width: clamp(220px, 30vmin, 340px);
+  background: rgba(8, 8, 18, 0.95);
+  border: 1px solid rgba(129, 140, 248, 0.4);
   border-radius: var(--radius-lg, 12px);
   overflow: visible;
   pointer-events: auto;
 }
 
 .analysisPanelReturn {
-  border-color: rgba(251, 146, 60, 0.38);
+  border-color: rgba(251, 146, 60, 0.45);
 }
 
 .panelHeader {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  padding: var(--space-3) var(--space-3);
+  background: rgba(255, 255, 255, 0.07);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: var(--radius-lg, 12px) var(--radius-lg, 12px) 0 0;
 }
 
 .panelTitle {
   flex: 1;
-  font-size: var(--text-base);
+  font-size: var(--text-md);
   font-weight: var(--weight-semibold);
-  color: rgba(180, 190, 230, 0.9);
+  color: rgba(210, 220, 255, 0.95);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .panelTitleReturn {
-  color: rgba(230, 200, 175, 0.9);
+  color: rgba(255, 220, 190, 0.95);
 }
 
 /* ─── Info button + tooltip ──────────────────────────────────────────────── */
@@ -269,18 +271,24 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: none;
-  border: none;
-  padding: 2px 4px;
-  font-size: var(--text-md);
-  color: rgba(180, 190, 230, 0.65);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(180, 190, 230, 0.12);
+  border: 1.5px solid rgba(180, 190, 230, 0.45);
+  padding: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: rgba(200, 210, 255, 0.85);
   cursor: pointer;
   line-height: 1;
-  transition: color 0.15s;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 
 .infoBtn:hover {
-  color: rgba(180, 190, 230, 1);
+  background: rgba(180, 190, 230, 0.25);
+  border-color: rgba(200, 210, 255, 0.85);
+  color: #fff;
 }
 
 .infoTooltip {
@@ -326,8 +334,8 @@
 
 .axisLabel {
   position: absolute;
-  font-size: var(--text-sm);
-  color: rgba(160, 170, 210, 0.55);
+  font-size: var(--text-base);
+  color: rgba(160, 170, 210, 0.7);
   pointer-events: none;
   line-height: 1;
   user-select: none;
