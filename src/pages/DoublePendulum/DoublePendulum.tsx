@@ -273,41 +273,51 @@ export default function DoublePendulum() {
     ctx.shadowBlur = 0;
 
     // ── Pivot ────────────────────────────────────────────────────────────────
+    const pivotR = 4.5;
     ctx.beginPath();
-    ctx.arc(px, py, 5, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.arc(px, py, pivotR, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(8, 18, 26, 0.95)';
+    ctx.fill();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = 'rgba(200, 230, 215, 0.65)';
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(px - pivotR * 0.3, py - pivotR * 0.35, pivotR * 0.28, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
     ctx.fill();
 
-    // ── Bob 1 ────────────────────────────────────────────────────────────────
-    const r1 = Math.max(6, scale * 0.07);
-    const g1 = ctx.createRadialGradient(b1x, b1y, 0, b1x, b1y, r1 * 2);
-    g1.addColorStop(0,   'rgba(255,255,255,1)');
-    g1.addColorStop(0.4, 'rgba(100,240,160,0.75)');
-    g1.addColorStop(1,   'rgba(74,222,128,0)');
+    // ── Bob 1 (joint) ────────────────────────────────────────────────────────
+    const r1 = Math.max(5, scale * 0.05);
+    ctx.shadowColor = 'rgba(74,222,128,0.55)';
+    ctx.shadowBlur  = 10;
     ctx.beginPath();
-    ctx.arc(b1x, b1y, r1 * 2, 0, Math.PI * 2);
-    ctx.fillStyle = g1;
+    ctx.arc(b1x, b1y, r1, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(22, 62, 44, 0.97)';
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = 'rgba(74,222,128,0.85)';
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(b1x - r1 * 0.28, b1y - r1 * 0.32, r1 * 0.25, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
     ctx.fill();
 
+    // ── Bob 2 (end bob) ──────────────────────────────────────────────────────
+    const r2 = Math.max(6, scale * 0.062);
+    ctx.shadowColor = 'rgba(74,222,128,0.65)';
+    ctx.shadowBlur  = 12;
     ctx.beginPath();
-    ctx.arc(b1x, b1y, r1 * 0.55, 0, Math.PI * 2);
-    ctx.fillStyle = '#fff';
+    ctx.arc(b2x, b2y, r2, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(22, 62, 44, 0.97)';
     ctx.fill();
-
-    // ── Bob 2 (slightly larger, brighter glow) ───────────────────────────────
-    const r2 = Math.max(7, scale * 0.09);
-    const g2 = ctx.createRadialGradient(b2x, b2y, 0, b2x, b2y, r2 * 2.5);
-    g2.addColorStop(0,   'rgba(255,255,255,1)');
-    g2.addColorStop(0.35,'rgba(74,222,128,0.85)');
-    g2.addColorStop(1,   'rgba(74,222,128,0)');
+    ctx.shadowBlur = 0;
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = 'rgba(74,222,128,0.92)';
+    ctx.stroke();
     ctx.beginPath();
-    ctx.arc(b2x, b2y, r2 * 2.5, 0, Math.PI * 2);
-    ctx.fillStyle = g2;
-    ctx.fill();
-
-    ctx.beginPath();
-    ctx.arc(b2x, b2y, r2 * 0.55, 0, Math.PI * 2);
-    ctx.fillStyle = '#fff';
+    ctx.arc(b2x - r2 * 0.28, b2y - r2 * 0.32, r2 * 0.25, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
     ctx.fill();
 
     ctx.restore();
