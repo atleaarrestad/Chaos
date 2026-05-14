@@ -124,6 +124,21 @@ export default function Mandelbrot() {
   const [gpuAvailable,  setGpuAvailable]  = useState(false);
   const [useGPU,        setUseGPU]        = useState(() => detectWebGL());
 
+  // ── Animation state ────────────────────────────────────────────────────────
+  const [animating,        setAnimating]        = useState(false);
+  const [animMode,         setAnimMode]         = useState<'zoom' | 'julia' | 'both'>('zoom');
+  const [animSpeed,        setAnimSpeed]        = useState(0.5);
+  const [juliaOrbitRadius, setJuliaOrbitRadius] = useState(0.7);
+  const [colorCycle,       setColorCycle]       = useState(false);
+
+  // Animation refs — read inside rAF loop to avoid stale closures
+  const animModeRef          = useRef<'zoom' | 'julia' | 'both'>('zoom');
+  const animSpeedRef         = useRef(0.5);
+  const juliaOrbitRadiusRef  = useRef(0.7);
+  const juliaAngleRef        = useRef(0.0);
+  const colorCycleRef        = useRef(false);
+  const zoomDirRef           = useRef(1); // 1 = zooming in, -1 = zooming out
+
   // Mutable ref read by startRender — avoids stale closures without needing
   // to recreate callbacks every time a UI param changes.
   const cpRef = useRef<ColorParams>({
@@ -569,6 +584,115 @@ export default function Mandelbrot() {
     triggerRender();
   }, [triggerRender]);
 
+  // ── animation loop ─────────────────────────────────────────────────────────
+
+  /** Maximum zoom depth for the ping-pong zoom animation (well below HP threshold). */
+  const ANIM_MAX_ZOOM = 5e8;
+
+  useEffect(() => {
+    if (!animating) return;
+
+    // Auto-enable GPU if available but toggled off
+    if (gpuAvailable && !useGPURef.current) {
+      useGPURef.current = true;
+      setUseGPU(true);
+      cancelRender();
+    }
+    if (!useGPURef.current) return;
+
+    // Enable Julia mode when animation needs it
+    if (animModeRef.current !== 'zoom' && !cpRef.current.juliaMode) {
+      cpRef.current.juliaMode = true;
+      setJuliaMode(true);
+      view.current = { centerX: 0, centerY: 0, zoom: 250 };
+    }
+
+    let rafId: number;
+    let lastT: number | null = null;
+
+    function loop(t: number) {
+      if (lastT === null) { lastT = t; rafId = requestAnimationFrame(loop); return; }
+      const dt  = Math.min((t - lastT) / 1000, 0.1);
+      lastT = t;
+
+      const mode  = animModeRef.current;
+      const speed = animSpeedRef.current;
+
+      // Ping-pong zoom
+      if (mode === 'zoom' || mode === 'both') {
+        const factor  = Math.pow(2, speed * 0.8 * zoomDirRef.current * dt);
+        const newZoom = view.current.zoom * factor;
+        if (newZoom > ANIM_MAX_ZOOM) zoomDirRef.current = -1;
+        else if (newZoom < INITIAL.zoom) zoomDirRef.current = 1;
+        view.current = {
+          ...view.current,
+          zoom:  Math.max(INITIAL.zoom, Math.min(ANIM_MAX_ZOOM, newZoom)),
+          hpCX: undefined,
+          hpCY: undefined,
+        };
+      }
+
+      // Julia c-parameter orbit (c = radius * e^(i·angle))
+      if (mode === 'julia' || mode === 'both') {
+        juliaAngleRef.current = (juliaAngleRef.current + speed * 0.6 * dt) % (2 * Math.PI);
+        const r  = juliaOrbitRadiusRef.current;
+        const re = r * Math.cos(juliaAngleRef.current);
+        const im = r * Math.sin(juliaAngleRef.current);
+        cpRef.current.juliaRe = re;
+        cpRef.current.juliaIm = im;
+        setJuliaRe(re);
+        setJuliaIm(im);
+      }
+
+      // Color cycle
+      if (colorCycleRef.current) {
+        const newOff = (cpRef.current.colorOffset + speed * 3 * dt) % 16;
+        cpRef.current.colorOffset = newOff;
+        setColorOffset(newOff);
+      }
+
+      renderGPU(false);
+      rafId = requestAnimationFrame(loop);
+    }
+
+    rafId = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(rafId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [animating, gpuAvailable, cancelRender, renderGPU]);
+
+  // ── animation handlers ─────────────────────────────────────────────────────
+
+  const handleAnimModeChange = useCallback((v: 'zoom' | 'julia' | 'both') => {
+    animModeRef.current = v;
+    setAnimMode(v);
+    // If switching to a Julia mode, ensure Julia fractal is active
+    if (v !== 'zoom' && !cpRef.current.juliaMode) {
+      cpRef.current.juliaMode = true;
+      setJuliaMode(true);
+      view.current = { centerX: 0, centerY: 0, zoom: 250 };
+      triggerRender();
+    }
+  }, [triggerRender]);
+
+  const handleAnimSpeedChange = useCallback((v: number) => {
+    animSpeedRef.current = v;
+    setAnimSpeed(v);
+  }, []);
+
+  const handleJuliaOrbitRadiusChange = useCallback((v: number) => {
+    juliaOrbitRadiusRef.current = v;
+    setJuliaOrbitRadius(v);
+  }, []);
+
+  const handleColorCycleChange = useCallback((v: boolean) => {
+    colorCycleRef.current = v;
+    setColorCycle(v);
+  }, []);
+
+  const toggleAnimation = useCallback(() => {
+    setAnimating(a => !a);
+  }, []);
+
   // ── color / quality param handlers ─────────────────────────────────────────
 
   const handlePaletteChange = useCallback((id: PaletteId) => {
@@ -674,6 +798,7 @@ export default function Mandelbrot() {
         style={{ opacity: useGPU ? 0 : 1 }} />
 
       <div className={styles.sidebar}>
+        <div className={styles.sidebarPanels}>
         <ControlPanel title="Explore">
           <ControlGroup>
             <div className={styles.snapRow}>
@@ -747,6 +872,58 @@ export default function Mandelbrot() {
           </ControlGroup>
         </ControlPanel>
 
+        <ControlPanel title="Animation" defaultOpen={false}>
+          <ControlGroup>
+            <button
+              className={`${styles.animBtn} ${animating ? styles.animBtnActive : ''}`}
+              type="button"
+              onClick={toggleAnimation}
+              disabled={!gpuAvailable}
+            >
+              {animating ? '⏸ Pause' : '▶ Play'}
+            </button>
+            {!gpuAvailable && (
+              <span className={styles.animNote}>Requires GPU rendering</span>
+            )}
+          </ControlGroup>
+          <ControlGroup>
+            <SelectControl
+              label="Mode"
+              value={animMode}
+              onChange={handleAnimModeChange}
+              options={[
+                { value: 'zoom'  as const, label: 'Auto Zoom' },
+                { value: 'julia' as const, label: 'Julia Orbit' },
+                { value: 'both'  as const, label: 'Zoom + Julia' },
+              ]}
+            />
+          </ControlGroup>
+          <ControlGroup>
+            <Slider
+              label="Speed"
+              value={animSpeed}
+              min={0.1} max={2} step={0.05}
+              onChange={handleAnimSpeedChange}
+            />
+            {(animMode === 'julia' || animMode === 'both') && (
+              <Slider
+                label="Orbit Radius"
+                value={juliaOrbitRadius}
+                min={0.1} max={1.5} step={0.01}
+                onChange={handleJuliaOrbitRadiusChange}
+              />
+            )}
+          </ControlGroup>
+          <ControlGroup>
+            <Toggle
+              label="Cycle Colors"
+              value={colorCycle}
+              onChange={handleColorCycleChange}
+              description="Animate color offset"
+            />
+          </ControlGroup>
+        </ControlPanel>
+
         <ControlPanel title="Quality" defaultOpen={false}>
           <ControlGroup>
             <Toggle
@@ -772,7 +949,9 @@ export default function Mandelbrot() {
             />
           </ControlGroup>
         </ControlPanel>
+        </div>{/* end sidebarPanels */}
 
+        <div className={styles.sidebarActions}>
         <button className={styles.saveBtn} type="button" onClick={saveImage}>
           ↓ Save PNG
         </button>
@@ -780,6 +959,7 @@ export default function Mandelbrot() {
         <button className={styles.resetBtn} type="button" onClick={reset}>
           Reset View
         </button>
+        </div>
       </div>
 
       <div className={styles.hud}>
@@ -788,12 +968,17 @@ export default function Mandelbrot() {
             {juliaMode ? 'Julia Set' : 'Mandelbrot Set'}
           </span>
           <span ref={zoomLabel} className={styles.hudZoom}>1.0&times;</span>
+          {animating && (
+            <span className={styles.hudAnim}>▶ animating</span>
+          )}
         </div>
         <div className={styles.hudRight}>
           <span className={styles.hudHint}>
-            {juliaMode
-              ? 'click to pick c · scroll to zoom · drag to pan'
-              : 'scroll to zoom · drag to pan'}
+            {animating
+              ? 'click Animation panel to pause'
+              : juliaMode
+                ? 'click to pick c · scroll to zoom · drag to pan'
+                : 'scroll to zoom · drag to pan'}
           </span>
         </div>
       </div>
