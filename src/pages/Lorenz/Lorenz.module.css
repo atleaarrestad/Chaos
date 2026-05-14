@@ -209,3 +209,157 @@
   font-size: var(--text-xs);
   color: rgba(255, 255, 255, 0.3);
 }
+
+/* ─── Analysis panels (Poincaré + Return map) ────────────────────────────── */
+
+.panelStack {
+  position: absolute;
+  bottom: 4rem;
+  left: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  z-index: 5;
+  pointer-events: none;
+}
+
+.analysisPanel {
+  width: clamp(200px, 27vmin, 300px);
+  background: rgba(8, 8, 18, 0.92);
+  border: 1px solid rgba(129, 140, 248, 0.35);
+  border-radius: var(--radius-lg, 12px);
+  overflow: visible;
+  pointer-events: auto;
+}
+
+.analysisPanelReturn {
+  border-color: rgba(251, 146, 60, 0.38);
+}
+
+.panelHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.panelTitle {
+  flex: 1;
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  color: rgba(180, 190, 230, 0.9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.panelTitleReturn {
+  color: rgba(230, 200, 175, 0.9);
+}
+
+/* ─── Info button + tooltip ──────────────────────────────────────────────── */
+
+.infoBtnWrapper {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.infoBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  font-size: var(--text-md);
+  color: rgba(180, 190, 230, 0.65);
+  cursor: pointer;
+  line-height: 1;
+  transition: color 0.15s;
+}
+
+.infoBtn:hover {
+  color: rgba(180, 190, 230, 1);
+}
+
+.infoTooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  width: 230px;
+  padding: var(--space-2) var(--space-3);
+  background: rgba(12, 12, 24, 0.97);
+  border: 1px solid rgba(129, 140, 248, 0.28);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  color: rgba(190, 200, 230, 0.85);
+  line-height: 1.6;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.15s, transform 0.15s;
+  z-index: 30;
+  white-space: normal;
+}
+
+.infoBtnWrapper:hover .infoTooltip {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+/* ─── Plot area ──────────────────────────────────────────────────────────── */
+
+.plotWrapper {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border-radius: 0 0 calc(var(--radius-lg, 12px) - 1px) calc(var(--radius-lg, 12px) - 1px);
+  overflow: hidden;
+}
+
+.plotCanvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.axisLabel {
+  position: absolute;
+  font-size: var(--text-sm);
+  color: rgba(160, 170, 210, 0.55);
+  pointer-events: none;
+  line-height: 1;
+  user-select: none;
+}
+
+.axisLabelH {
+  bottom: 6px;
+  right: 8px;
+}
+
+.axisLabelV {
+  top: 6px;
+  left: 8px;
+}
+
+.axisLabelReturn {
+  color: rgba(210, 178, 140, 0.45);
+}
+
+.panelBadge {
+  position: absolute;
+  bottom: 5px;
+  left: 8px;
+  font-size: var(--text-xs);
+  color: rgba(129, 140, 248, 0.5);
+  pointer-events: none;
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  user-select: none;
+}
+
+.panelBadgeReturn {
+  color: rgba(251, 146, 60, 0.4);
+}

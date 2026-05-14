@@ -205,6 +205,8 @@ export default function Lorenz() {
   const dragRef            = useRef<{ x: number; y: number } | null>(null);
   const zoomRef            = useRef(1);
   const gpuRef             = useRef<LorenzGPU | null>(null);
+  const poincarePanelRef   = useRef<HTMLCanvasElement>(null);
+  const returnMapPanelRef  = useRef<HTMLCanvasElement>(null);
 
   // Mutable params ref — the rAF loop reads this to avoid stale closures.
   const pRef = useRef<Params>({ attractors, dt, speed, trailLength, colorScheme, running, showAxes, autoRotate, showPoincare, showReturnMap, poincareZ, sectionAxis });
@@ -688,207 +690,86 @@ export default function Lorenz() {
       gpu.step(gpuParams);
     }
 
-    // ─── GPU section panel (or CPU fallback) ─────────────────────────────
+    // ─── Analysis panel canvases ─────────────────────────────────────────
     if (showPoincare) {
-      const panelS = Math.round(Math.min(W, H) * 0.27);
-      const panelX = Math.round(W * 0.013);
-      const panelY = H - panelS - Math.round(H * 0.085);
-      const titleH = Math.round(panelS * 0.16);
-      const pad = Math.round(panelS * 0.1);
-
-      if (gpu) {
-        const plotS = panelS - titleH - 2 * pad;
-        const plotX = panelX + pad;
-        const plotY = panelY + titleH + pad;
-
-        // Background fill
-        ctx.save();
-        ctx.fillStyle = 'rgba(8,8,18,0.90)';
-        ctx.beginPath();
-        ctx.roundRect(panelX, panelY, panelS, panelS, Math.round(panelS * 0.04));
-        ctx.fill();
-        // Clip GPU blit to plot area so it never bleeds outside the panel
-        ctx.beginPath();
-        ctx.rect(plotX, plotY, plotS, plotS);
-        ctx.clip();
-        gpu.drawPanel(ctx, 0, plotX, plotY, plotS, plotS);
-        ctx.restore();
-
-        const [uLabel, vLabel] = sectionAxis === 'z' ? ['x', 'y']
-                                : sectionAxis === 'y' ? ['x', 'z'] : ['y', 'z'];
-        ctx.save();
-        ctx.strokeStyle = 'rgba(129,140,248,0.4)';
-        ctx.lineWidth = 1;
-        ctx.setLineDash([]);
-        ctx.beginPath();
-        ctx.roundRect(panelX, panelY, panelS, panelS, Math.round(panelS * 0.04));
-        ctx.stroke();
-
-        const fsTitle = Math.max(13, Math.round(panelS * 0.10));
-        ctx.font = `${fsTitle}px var(--font-sans, system-ui)`;
-        ctx.fillStyle = 'rgba(180,190,230,0.9)';
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText(`Poincaré  ${sectionAxis} = ${poincareZ}`, panelX + panelS / 2, panelY + titleH / 2);
-
-        const fsLbl = Math.max(10, Math.round(panelS * 0.082));
-        ctx.font = `${fsLbl}px var(--font-sans, system-ui)`;
-        ctx.fillStyle = 'rgba(160,170,210,0.55)';
-        ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
-        ctx.fillText(uLabel + '→', panelX + pad + plotS - 2, panelY + titleH + pad + plotS);
-        ctx.textAlign = 'right'; ctx.textBaseline = 'top';
-        ctx.fillText('↑' + vLabel, panelX + pad + plotS, panelY + titleH + pad + 2);
-
-        ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
-        ctx.fillStyle = 'rgba(129,140,248,0.45)';
-        ctx.fillText('GPU', panelX + panelS - pad, panelY + panelS - Math.round(panelS * 0.04));
-        ctx.restore();
-      } else {
-        const totalPts = states.reduce((s, st) => s + st.poincare.total, 0);
-        const plotS = panelS - titleH - 2 * pad;
-        const pcx = panelX + pad + plotS / 2;
-        const pcy = panelY + titleH + pad + plotS / 2;
-
-        const [uLabel, vLabel] = sectionAxis === 'z' ? ['x', 'y']
-                               : sectionAxis === 'y' ? ['x', 'z']
-                               : ['y', 'z'];
-
-        let minU = Infinity, maxU = -Infinity, minV = Infinity, maxV = -Infinity;
-        for (const st of states) {
-          if (st.poincare.total === 0) continue;
-          minU = Math.min(minU, st.poincare.minU);
-          maxU = Math.max(maxU, st.poincare.maxU);
-          minV = Math.min(minV, st.poincare.minV);
-          maxV = Math.max(maxV, st.poincare.maxV);
+      const pc = poincarePanelRef.current;
+      if (pc && pc.clientWidth > 0) {
+        if (pc.width !== pc.clientWidth || pc.height !== pc.clientHeight) {
+          pc.width  = pc.clientWidth;
+          pc.height = pc.clientHeight;
         }
-        const hasData = isFinite(minU) && isFinite(maxU);
-        const rangeU = hasData ? Math.max((maxU - minU) * 1.15, 1) : 40;
-        const rangeV = hasData ? Math.max((maxV - minV) * 1.15, 1) : 50;
-        const cU = hasData ? (minU + maxU) / 2 : 0;
-        const cV = hasData ? (minV + maxV) / 2 : 25;
+        const cw = pc.width, ch = pc.height;
+        const pCtx = pc.getContext('2d');
+        if (pCtx) {
+          if (gpu) {
+            gpu.drawPanel(pCtx, 0, 0, 0, cw, ch);
+          } else {
+            // CPU fallback — draw dots directly onto panel canvas
+            let minU = Infinity, maxU = -Infinity, minV = Infinity, maxV = -Infinity;
+            for (const st of states) {
+              if (st.poincare.total === 0) continue;
+              minU = Math.min(minU, st.poincare.minU);
+              maxU = Math.max(maxU, st.poincare.maxU);
+              minV = Math.min(minV, st.poincare.minV);
+              maxV = Math.max(maxV, st.poincare.maxV);
+            }
+            const hasData = isFinite(minU) && isFinite(maxU);
+            const rangeU  = hasData ? Math.max((maxU - minU) * 1.15, 1) : 40;
+            const rangeV  = hasData ? Math.max((maxV - minV) * 1.15, 1) : 50;
+            const cU = hasData ? (minU + maxU) / 2 : 0;
+            const cV = hasData ? (minV + maxV) / 2 : 25;
+            const half = Math.min(cw, ch) * 0.5;
+            const pcx = cw / 2, pcy = ch / 2;
 
-        ctx.save();
-        ctx.fillStyle = 'rgba(8,8,18,0.90)';
-        ctx.beginPath();
-        ctx.roundRect(panelX, panelY, panelS, panelS, Math.round(panelS * 0.04));
-        ctx.fill();
-        ctx.strokeStyle = 'rgba(129,140,248,0.4)';
-        ctx.lineWidth = 1;
-        ctx.setLineDash([]);
-        ctx.stroke();
+            pCtx.fillStyle = '#05050f';
+            pCtx.fillRect(0, 0, cw, ch);
 
-        const fsTitle = Math.max(13, Math.round(panelS * 0.10));
-        ctx.font = `${fsTitle}px var(--font-sans, system-ui)`;
-        ctx.fillStyle = 'rgba(180,190,230,0.9)';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(`Poincaré  ${sectionAxis} = ${poincareZ}`, panelX + panelS / 2, panelY + titleH / 2);
+            const axX = Math.max(0, Math.min(cw, pcx + (0 - cU) / (rangeU / 2) * half));
+            const axY = Math.max(0, Math.min(ch, pcy - (0 - cV) / (rangeV / 2) * half));
+            pCtx.strokeStyle = 'rgba(255,255,255,0.1)';
+            pCtx.lineWidth = 0.5;
+            pCtx.beginPath(); pCtx.moveTo(0, axY);  pCtx.lineTo(cw, axY);  pCtx.stroke();
+            pCtx.beginPath(); pCtx.moveTo(axX, 0);  pCtx.lineTo(axX, ch);  pCtx.stroke();
 
-        const axX = pcx + (0 - cU) / (rangeU / 2) * (plotS / 2);
-        const axY = pcy - (0 - cV) / (rangeV / 2) * (plotS / 2);
-        const clampedAxX = Math.max(panelX + pad, Math.min(panelX + pad + plotS, axX));
-        const clampedAxY = Math.max(panelY + titleH + pad, Math.min(panelY + titleH + pad + plotS, axY));
-        ctx.strokeStyle = 'rgba(255,255,255,0.1)';
-        ctx.lineWidth = 0.5;
-        ctx.beginPath();
-        ctx.moveTo(panelX + pad, clampedAxY); ctx.lineTo(panelX + pad + plotS, clampedAxY); ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(clampedAxX, panelY + titleH + pad); ctx.lineTo(clampedAxX, panelY + titleH + pad + plotS); ctx.stroke();
-
-        const fsLbl = Math.max(10, Math.round(panelS * 0.082));
-        ctx.font = `${fsLbl}px var(--font-sans, system-ui)`;
-        ctx.fillStyle = 'rgba(160,170,210,0.55)';
-        ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-        ctx.fillText(uLabel, panelX + pad + plotS - 6, clampedAxY + 3);
-        ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
-        ctx.fillText(vLabel, clampedAxX - 4, panelY + titleH + pad + 6);
-
-        if (!hasData) {
-          ctx.fillStyle = 'rgba(180,190,230,0.3)';
-          ctx.font = `${fsLbl}px var(--font-sans, system-ui)`;
-          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-          ctx.fillText('waiting for crossings…', pcx, pcy);
-        } else {
-          for (let ai = 0; ai < states.length; ai++) {
-            const state = states[ai];
-            const def = attractors.find(a => a.id === state.id);
-            if (!def) continue;
-            const pb = state.poincare;
-            const count = Math.min(pb.total, MAX_POINCARE);
-            if (count === 0) continue;
-            const [pr, pg, pb2] = ai === 0 ? [129, 140, 248] : def.color.split(',').map(Number);
-            ctx.fillStyle = `rgba(${pr},${pg},${pb2},0.9)`;
-            for (let i = 0; i < count; i++) {
-              const si = ((pb.head - count + i) % MAX_POINCARE + MAX_POINCARE) % MAX_POINCARE;
-              const u = pb.xy[si * 2];
-              const v = pb.xy[si * 2 + 1];
-              const sx = pcx + (u - cU) / (rangeU / 2) * (plotS / 2);
-              const sy = pcy - (v - cV) / (rangeV / 2) * (plotS / 2);
-              if (sx < panelX + pad - 2 || sx > panelX + pad + plotS + 2) continue;
-              if (sy < panelY + titleH + pad - 2 || sy > panelY + titleH + pad + plotS + 2) continue;
-              ctx.fillRect(sx - 1.5, sy - 1.5, 3, 3);
+            if (!hasData) {
+              pCtx.fillStyle = 'rgba(180,190,230,0.3)';
+              pCtx.font = `${Math.round(Math.min(cw, ch) * 0.07)}px system-ui, sans-serif`;
+              pCtx.textAlign = 'center'; pCtx.textBaseline = 'middle';
+              pCtx.fillText('waiting for crossings…', pcx, pcy);
+            } else {
+              for (let ai = 0; ai < states.length; ai++) {
+                const state = states[ai];
+                const def = attractors.find(a => a.id === state.id);
+                if (!def) continue;
+                const pb = state.poincare;
+                const count = Math.min(pb.total, MAX_POINCARE);
+                if (count === 0) continue;
+                const [pr, pg, pb2] = ai === 0 ? [129, 140, 248] : def.color.split(',').map(Number);
+                pCtx.fillStyle = `rgba(${pr},${pg},${pb2},0.9)`;
+                for (let i = 0; i < count; i++) {
+                  const si = ((pb.head - count + i) % MAX_POINCARE + MAX_POINCARE) % MAX_POINCARE;
+                  const sx = pcx + (pb.xy[si * 2]     - cU) / (rangeU / 2) * half;
+                  const sy = pcy - (pb.xy[si * 2 + 1] - cV) / (rangeV / 2) * half;
+                  if (sx < -2 || sx > cw + 2 || sy < -2 || sy > ch + 2) continue;
+                  pCtx.fillRect(sx - 1.5, sy - 1.5, 3, 3);
+                }
+              }
             }
           }
         }
-
-        ctx.fillStyle = 'rgba(129,140,248,0.45)';
-        ctx.font = `${Math.max(10, Math.round(panelS * 0.078))}px var(--font-sans, system-ui)`;
-        ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
-        ctx.fillText(`${totalPts} pts`, panelX + panelS - pad, panelY + panelS - Math.round(panelS * 0.04));
-
-        ctx.restore();
       }
     }
 
-    // ─── Return map panel ────────────────────────────────────────────────
-    if (showReturnMap && gpuRef.current) {
-      const panelS = Math.round(Math.min(W, H) * 0.27);
-      // Stack directly above the Poincaré panel with a small gap
-      const panelX = Math.round(W * 0.013);
-      const poincPanelY = H - panelS - Math.round(H * 0.085);
-      const gap = Math.round(panelS * 0.05);
-      const panelY = poincPanelY - panelS - gap;
-      const titleH = Math.round(panelS * 0.16);
-      const pad = Math.round(panelS * 0.1);
-      const plotS = panelS - titleH - 2 * pad;
-
-      // Background + clipped GPU blit
-      ctx.save();
-      ctx.fillStyle = 'rgba(8,8,18,0.90)';
-      ctx.beginPath();
-      ctx.roundRect(panelX, panelY, panelS, panelS, Math.round(panelS * 0.04));
-      ctx.fill();
-      ctx.beginPath();
-      ctx.rect(panelX + pad, panelY + titleH + pad, plotS, plotS);
-      ctx.clip();
-      gpuRef.current.drawPanel(ctx, 1, panelX + pad, panelY + titleH + pad, plotS, plotS);
-      ctx.restore();
-
-      ctx.save();
-      ctx.strokeStyle = 'rgba(251,146,60,0.4)';
-      ctx.lineWidth = 1;
-      ctx.setLineDash([]);
-      ctx.beginPath();
-      ctx.roundRect(panelX, panelY, panelS, panelS, Math.round(panelS * 0.04));
-      ctx.stroke();
-
-      const fsTitle = Math.max(13, Math.round(panelS * 0.10));
-      ctx.font = `${fsTitle}px var(--font-sans, system-ui)`;
-      ctx.fillStyle = 'rgba(230,200,180,0.9)';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText('Return map  zₙ₊₁ vs zₙ', panelX + panelS / 2, panelY + titleH / 2);
-
-      const fsLbl = Math.max(10, Math.round(panelS * 0.082));
-      ctx.font = `${fsLbl}px var(--font-sans, system-ui)`;
-      ctx.fillStyle = 'rgba(210,180,140,0.55)';
-      ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
-      ctx.fillText('zₙ→', panelX + pad + plotS - 2, panelY + titleH + pad + plotS);
-      ctx.textAlign = 'right'; ctx.textBaseline = 'top';
-      ctx.fillText('↑zₙ₊₁', panelX + pad + plotS, panelY + titleH + pad + 2);
-
-      ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
-      ctx.fillStyle = 'rgba(251,146,60,0.45)';
-      ctx.fillText('GPU', panelX + panelS - pad, panelY + panelS - Math.round(panelS * 0.04));
-      ctx.restore();
+    if (showReturnMap && gpu) {
+      const rc = returnMapPanelRef.current;
+      if (rc && rc.clientWidth > 0) {
+        if (rc.width !== rc.clientWidth || rc.height !== rc.clientHeight) {
+          rc.width  = rc.clientWidth;
+          rc.height = rc.clientHeight;
+        }
+        const rCtx = rc.getContext('2d');
+        if (rCtx) gpu.drawPanel(rCtx, 1, 0, 0, rc.width, rc.height);
+      }
     }
 
     rafRef.current = requestAnimationFrame(draw);
@@ -964,6 +845,8 @@ export default function Lorenz() {
   }, []);
 
   // ─── Render ───────────────────────────────────────────────────────────────
+
+  const [pcU, pcV] = sectionAxis === 'z' ? ['x', 'y'] : sectionAxis === 'y' ? ['x', 'z'] : ['y', 'z'];
 
   return (
     <div className={styles.container}>
@@ -1105,6 +988,58 @@ export default function Lorenz() {
           <span className={styles.hudHint}>drag to rotate</span>
         </div>
       </div>
+
+      {/* ─── Analysis panels ─────────────────────────────────────────────── */}
+      {(showPoincare || (showReturnMap && gpuAvailable)) && (
+        <div className={styles.panelStack}>
+          {showReturnMap && gpuAvailable && (
+            <div className={`${styles.analysisPanel} ${styles.analysisPanelReturn}`}>
+              <div className={styles.panelHeader}>
+                <span className={`${styles.panelTitle} ${styles.panelTitleReturn}`}>
+                  Return map — z<sub>n+1</sub> vs z<sub>n</sub>
+                </span>
+                <div className={styles.infoBtnWrapper}>
+                  <button className={styles.infoBtn} type="button" aria-label="About return map">ⓘ</button>
+                  <div className={styles.infoTooltip}>
+                    Each point (z<sub>n</sub>,&thinsp;z<sub>n+1</sub>) plots successive local z&#8209;maxima
+                    against each other. The tent&#8209;map shape confirms deterministic chaos:
+                    tiny differences grow exponentially.
+                  </div>
+                </div>
+              </div>
+              <div className={styles.plotWrapper}>
+                <canvas ref={returnMapPanelRef} className={styles.plotCanvas} />
+                <span className={`${styles.axisLabel} ${styles.axisLabelH} ${styles.axisLabelReturn}`}>z<sub>n</sub>&thinsp;→</span>
+                <span className={`${styles.axisLabel} ${styles.axisLabelV} ${styles.axisLabelReturn}`}>↑&thinsp;z<sub>n+1</sub></span>
+                <span className={`${styles.panelBadge} ${styles.panelBadgeReturn}`}>GPU</span>
+              </div>
+            </div>
+          )}
+          {showPoincare && (
+            <div className={styles.analysisPanel}>
+              <div className={styles.panelHeader}>
+                <span className={styles.panelTitle}>
+                  Poincaré — {sectionAxis}&thinsp;=&thinsp;{poincareZ}
+                </span>
+                <div className={styles.infoBtnWrapper}>
+                  <button className={styles.infoBtn} type="button" aria-label="About Poincaré section">ⓘ</button>
+                  <div className={styles.infoTooltip}>
+                    Records each crossing of the {sectionAxis}&thinsp;=&thinsp;{poincareZ} plane.
+                    The crossing points form a fractal curve, revealing the attractor&rsquo;s
+                    self&#8209;similar structure at every scale.
+                  </div>
+                </div>
+              </div>
+              <div className={styles.plotWrapper}>
+                <canvas ref={poincarePanelRef} className={styles.plotCanvas} />
+                <span className={`${styles.axisLabel} ${styles.axisLabelH}`}>{pcU}&thinsp;→</span>
+                <span className={`${styles.axisLabel} ${styles.axisLabelV}`}>↑&thinsp;{pcV}</span>
+                {gpuAvailable && <span className={styles.panelBadge}>GPU</span>}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
