@@ -386,13 +386,16 @@ export default function DoublePendulum() {
     pCtx.strokeStyle = 'rgba(74,222,128,0.7)';
     pCtx.lineWidth   = 0.8;
     pCtx.beginPath();
+    let prevTx = NaN;
     for (let i = 0; i < count; i++) {
       const si = ((head - count + i) % MAX_PHASE_PTS + MAX_PHASE_PTS) % MAX_PHASE_PTS;
       const tx = phaseBufRef.current[si * 2];
       const om = phaseBufRef.current[si * 2 + 1];
       const cx = toX(tx), cy = toY(om);
-      if (i === 0) pCtx.moveTo(cx, cy);
-      else         pCtx.lineTo(cx, cy);
+      // Detect θ wrap-around (|Δθ| > π means a discontinuous jump — lift the pen)
+      if (i === 0 || Math.abs(tx - prevTx) > Math.PI) pCtx.moveTo(cx, cy);
+      else                                              pCtx.lineTo(cx, cy);
+      prevTx = tx;
     }
     pCtx.stroke();
 
