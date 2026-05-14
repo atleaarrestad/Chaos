@@ -3,12 +3,12 @@ import { lazy, Suspense, type ReactNode } from 'react';
 import Layout from '@/components/Layout/Layout';
 
 const Home        = lazy(() => import('@/pages/Home/Home'));
-const ComingSoon  = lazy(() => import('@/pages/ComingSoon/ComingSoon'));
 const ControlsTest = lazy(() => import('@/pages/ControlsTest/ControlsTest'));
 const Lorenz          = lazy(() => import('@/pages/Lorenz/Lorenz'));
 const Mandelbrot      = lazy(() => import('@/pages/Mandelbrot/Mandelbrot'));
 const DoublePendulum  = lazy(() => import('@/pages/DoublePendulum/DoublePendulum'));
 const Cardioid        = lazy(() => import('@/pages/Cardioid/Cardioid'));
+const Bifurcation     = lazy(() => import('@/pages/Bifurcation/Bifurcation'));
 
 function Lazy({ children }: { children: ReactNode }) {
   return (
@@ -27,7 +27,7 @@ export const router = createBrowserRouter([
       { path: 'lorenz', element: <Lazy><Lorenz /></Lazy> },
       { path: 'mandelbrot', element: <Lazy><Mandelbrot /></Lazy> },
       { path: 'cardioid', element: <Lazy><Cardioid /></Lazy> },
-      { path: 'bifurcation', element: <Lazy><ComingSoon /></Lazy> },
+      { path: 'bifurcation', element: <Lazy><Bifurcation /></Lazy> },
       { path: 'double-pendulum', element: <Lazy><DoublePendulum /></Lazy> },
       { path: 'controls-test', element: <Lazy><ControlsTest /></Lazy> },
     ],
