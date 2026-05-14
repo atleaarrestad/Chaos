@@ -633,9 +633,11 @@ export default function Mandelbrot() {
         else if (newZoom < INITIAL.zoom && zoomMode === 'pingpong') zoomDirRef.current = 1;
         view.current = {
           ...view.current,
-          zoom:  Math.max(INITIAL.zoom, Math.min(ANIM_MAX_ZOOM, newZoom)),
-          hpCX: undefined,
-          hpCY: undefined,
+          zoom: Math.max(INITIAL.zoom, Math.min(ANIM_MAX_ZOOM, newZoom)),
+          // Preserve hpCX/hpCY — required for correct rendering above zoom ~1e13.
+          // Only clear them once zoom drops back into float64-safe range.
+          hpCX: newZoom < 1e13 ? undefined : view.current.hpCX,
+          hpCY: newZoom < 1e13 ? undefined : view.current.hpCY,
         };
       }
 
