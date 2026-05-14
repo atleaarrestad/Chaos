@@ -65,6 +65,7 @@ export default function Bifurcation() {
   const [useGPU,       setUseGPU]       = useState(false);
   const [zoomHistory,  setZoomHistory]  = useState<ZoomState[]>([]);
   const [hoverR,       setHoverR]       = useState<number | null>(null);
+  const [sidebarOpen,  setSidebarOpen]  = useState(true);
 
   // Drag-to-zoom selection rect (CSS pixels relative to the interaction layer)
   const dragStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -400,8 +401,21 @@ export default function Bifurcation() {
         )}
       </div>
 
+      {/* Sidebar collapse toggle — always visible, slides with sidebar */}
+      <button
+        className={`${styles.sidebarToggle}${sidebarOpen ? '' : ` ${styles.sidebarToggleCollapsed}`}`}
+        type="button"
+        title={sidebarOpen ? 'Hide controls' : 'Show controls'}
+        onClick={() => setSidebarOpen(v => !v)}
+      >
+        {sidebarOpen ? '›' : '‹'}
+      </button>
+
       {/* ─── Right-hand config sidebar ──────────────────────────────────── */}
-      <div ref={sidebarRef} className={styles.sidebar}>
+      <div
+        ref={sidebarRef}
+        className={`${styles.sidebar}${sidebarOpen ? '' : ` ${styles.sidebarHidden}`}`}
+      >
         <div className={styles.sidebarPanels}>
           <ControlPanel title="Presets">
             <ControlGroup>

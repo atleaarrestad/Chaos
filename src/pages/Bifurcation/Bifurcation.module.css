@@ -50,6 +50,46 @@
   flex-direction: column;
   gap: var(--space-2);
   z-index: 10;
+  transition: transform var(--ease-base);
+}
+
+.sidebarHidden {
+  transform: translateX(calc(100% + var(--space-4)));
+  pointer-events: none;
+}
+
+/* Sidebar show/hide toggle — sits to the left of the sidebar when open,
+   slides to the far right when sidebar is hidden */
+.sidebarToggle {
+  position: absolute;
+  top: var(--space-4);
+  /* left edge of sidebar minus a small gap */
+  right: calc(272px + var(--space-4) + var(--space-2));
+  z-index: 11;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: right var(--ease-base), background var(--ease-fast), color var(--ease-fast),
+    border-color var(--ease-fast);
+}
+
+.sidebarToggle:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: var(--border-hover);
+  color: var(--text);
+}
+
+.sidebarToggleCollapsed {
+  right: var(--space-4);
 }
 
 /* Scrollable panels region */
