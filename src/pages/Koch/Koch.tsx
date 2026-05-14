@@ -26,21 +26,19 @@ interface Preset {
 }
 
 const PRESETS: Preset[] = [
-  { label: 'Snow',   depth: 5, antiKoch: false, colorScheme: 'frost',  fillMode: 'both',    glow: true  },
-  { label: 'Aurora', depth: 4, antiKoch: false, colorScheme: 'aurora', fillMode: 'both',    glow: true  },
-  { label: 'Fire',   depth: 4, antiKoch: true,  colorScheme: 'fire',   fillMode: 'filled',  glow: false },
-  { label: 'Wire',   depth: 6, antiKoch: false, colorScheme: 'mono',   fillMode: 'outline', glow: true  },
-  { label: 'Anti',   depth: 4, antiKoch: true,  colorScheme: 'frost',  fillMode: 'both',    glow: true  },
-  { label: 'Deep',   depth: 7, antiKoch: false, colorScheme: 'frost',  fillMode: 'outline', glow: true  },
+  { label: 'Snow',  depth: 5, antiKoch: false, colorScheme: 'mono',  fillMode: 'outline', glow: true  },
+  { label: 'Frost', depth: 4, antiKoch: false, colorScheme: 'frost', fillMode: 'both',    glow: true  },
+  { label: 'Wire',  depth: 6, antiKoch: false, colorScheme: 'mono',  fillMode: 'outline', glow: true  },
+  { label: 'Anti',  depth: 4, antiKoch: true,  colorScheme: 'frost', fillMode: 'both',    glow: true  },
+  { label: 'Fill',  depth: 5, antiKoch: false, colorScheme: 'frost', fillMode: 'filled',  glow: false },
+  { label: 'Deep',  depth: 7, antiKoch: false, colorScheme: 'mono',  fillMode: 'outline', glow: true  },
 ];
 
 const DEFAULT: Preset = PRESETS[0];
 
 const COLOR_OPTS = [
-  { value: 'frost',  label: 'Frost'  },
-  { value: 'aurora', label: 'Aurora' },
-  { value: 'fire',   label: 'Fire'   },
-  { value: 'mono',   label: 'Mono'   },
+  { value: 'frost', label: 'Frost' },
+  { value: 'mono',  label: 'Mono'  },
 ];
 
 const FILL_OPTS = [
@@ -150,10 +148,8 @@ export default function Koch() {
     };
 
     const colors: Record<ColorSchemeId, [string, string]> = {
-      frost:  ['#2e93fa', '#e0f0ff'],
-      aurora: ['#06e088', '#a614ff'],
-      fire:   ['#f11f03', '#fff0b3'],
-      mono:   ['#9fb8d0', '#e8f4ff'],
+      frost: ['#2e93fa', '#e0f0ff'],
+      mono:  ['#9fb8d0', '#e8f4ff'],
     };
     const [c0, c1] = colors[p.colorScheme];
 

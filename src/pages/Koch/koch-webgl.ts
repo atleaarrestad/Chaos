@@ -21,7 +21,7 @@ import { createProgram } from '@/lib/gpu/shader';
 
 // ─── Geometry ─────────────────────────────────────────────────────────────────
 
-export type ColorSchemeId = 'frost' | 'aurora' | 'fire' | 'mono';
+export type ColorSchemeId = 'frost' | 'mono';
 export type FillModeId    = 'filled' | 'outline' | 'both';
 
 const SQRT3   = Math.sqrt(3);
@@ -104,33 +104,16 @@ vec3 frost(float t) {
   return mix(vec3(0.18, 0.58, 0.97), vec3(0.88, 0.96, 1.00), t);
 }
 
-vec3 aurora(float t) {
-  vec3 a = vec3(0.04, 0.88, 0.52);
-  vec3 b = vec3(0.65, 0.08, 1.00);
-  return t < 0.5 ? mix(a, b, t * 2.0) : mix(b, a, t * 2.0 - 1.0);
-}
-
-vec3 fire(float t) {
-  vec3 a = vec3(0.95, 0.12, 0.02);
-  vec3 b = vec3(1.00, 0.65, 0.00);
-  vec3 c = vec3(1.00, 1.00, 0.80);
-  return t < 0.5 ? mix(a, b, t * 2.0) : mix(b, c, t * 2.0 - 1.0);
-}
-
 void main() {
   float t = fract(v_t);
-  vec3 col;
-  if      (u_cs == 0) col = frost(t);
-  else if (u_cs == 1) col = aurora(t);
-  else if (u_cs == 2) col = fire(t);
-  else                col = vec3(0.82, 0.92, 1.00);
+  vec3 col = u_cs == 0 ? frost(t) : vec3(0.82, 0.92, 1.00);
   fragColor = vec4(col, u_alpha);
 }
 `;
 
 // ─── Renderer ─────────────────────────────────────────────────────────────────
 
-const CS_INDEX: Record<ColorSchemeId, number> = { frost: 0, aurora: 1, fire: 2, mono: 3 };
+const CS_INDEX: Record<ColorSchemeId, number> = { frost: 0, mono: 1 };
 
 export interface KochRenderParams {
   depth:       number;
