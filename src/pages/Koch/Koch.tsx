@@ -54,7 +54,9 @@ const VERT_COUNTS = Array.from({ length: 8 }, (_, d) => 3 * 4 ** d);
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function Koch() {
-  const gpuSupported = detectWebGL();
+  // detectWebGL() creates a canvas+context — lazy initializer ensures it runs
+  // exactly once, not on every re-render (which would leak WebGL contexts).
+  const [gpuSupported] = useState(() => detectWebGL());
 
   // Controls state
   const [depth,       setDepth]       = useState(DEFAULT.depth);
@@ -72,33 +74,57 @@ export default function Koch() {
   const glCanvasRef = useRef<HTMLCanvasElement>(null);
   // CPU canvas ref
   const cpuCanvasRef = useRef<HTMLCanvasElement>(null);
+  // Container ref (for non-passive wheel listener)
+  const containerRef = useRef<HTMLDivElement>(null);
   // Renderer ref
   const glRef = useRef<KochWebGLRenderer | null>(null);
   // Animation
   const rafRef  = useRef<number>(0);
   const rotRef  = useRef(0);
+  // Pending canvas size written by ResizeObserver, applied inside RAF so
+  // resize + redraw are atomic within one compositor frame (no black flash).
+  const pendingSizeRef = useRef<{ w: number; h: number } | null>(null);
   // Drag state
   const dragRef = useRef<{ x: number; y: number } | null>(null);
   // Active preset tracking
   const [activePreset, setActivePreset] = useState<number>(0);
 
-  // Mirror current params to a ref for use inside RAF without stale closure
+  // Synchronously mirror state into a ref so the RAF loop always reads the
+  // latest values without waiting for a useEffect to fire after paint.
   const pRef = useRef<KochRenderParams>({
     depth, antiKoch, colorScheme, fillMode, glow, zoom,
     panX, panY, rotation: 0,
   });
-
-  useEffect(() => {
-    pRef.current = { depth, antiKoch, colorScheme, fillMode, glow, zoom, panX, panY, rotation: rotRef.current };
-  }, [depth, antiKoch, colorScheme, fillMode, glow, zoom, panX, panY]);
+  pRef.current.depth       = depth;
+  pRef.current.antiKoch    = antiKoch;
+  pRef.current.colorScheme = colorScheme;
+  pRef.current.fillMode    = fillMode;
+  pRef.current.glow        = glow;
+  pRef.current.zoom        = zoom;
+  pRef.current.panX        = panX;
+  pRef.current.panY        = panY;
+  // rotation is managed by rotRef — updated each frame, not via state
 
   // ─── GPU init ────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (!useGPU || !glCanvasRef.current) return;
+    const canvas = glCanvasRef.current;
     glRef.current?.dispose();
-    glRef.current = createKochRenderer(glCanvasRef.current);
-    return () => { glRef.current?.dispose(); glRef.current = null; };
+    glRef.current = createKochRenderer(canvas);
+
+    // Recreate the renderer if the browser reclaims GPU resources.
+    const onLost = (e: Event) => { e.preventDefault(); glRef.current = null; };
+    const onRestored = () => { glRef.current = createKochRenderer(canvas); };
+    canvas.addEventListener('webglcontextlost', onLost);
+    canvas.addEventListener('webglcontextrestored', onRestored);
+
+    return () => {
+      canvas.removeEventListener('webglcontextlost', onLost);
+      canvas.removeEventListener('webglcontextrestored', onRestored);
+      glRef.current?.dispose();
+      glRef.current = null;
+    };
   }, [useGPU]);
 
   // ─── CPU draw ────────────────────────────────────────────────────────────────
@@ -178,14 +204,36 @@ export default function Koch() {
 
     function frame() {
       if (stopped) return;
+
+      // Apply any pending canvas resize here, inside the RAF callback.
+      // Doing resize + redraw in the same RAF frame means the compositor
+      // only ever sees the fully-rendered result — never the cleared canvas.
+      const pending = pendingSizeRef.current;
+      if (pending) {
+        pendingSizeRef.current = null;
+        const gpuCanvas = glCanvasRef.current;
+        const cpuCanvas = cpuCanvasRef.current;
+        if (gpuCanvas && (gpuCanvas.width !== pending.w || gpuCanvas.height !== pending.h)) {
+          gpuCanvas.width = pending.w; gpuCanvas.height = pending.h;
+        }
+        if (cpuCanvas && (cpuCanvas.width !== pending.w || cpuCanvas.height !== pending.h)) {
+          cpuCanvas.width = pending.w; cpuCanvas.height = pending.h;
+        }
+      }
+
       if (rotateRef.current) {
         rotRef.current += 0.004;
       }
-      const p = { ...pRef.current, rotation: rotRef.current };
-      if (useGPURef.current) {
-        glRef.current?.render(p);
-      } else {
-        drawCPU(p);
+      const p: KochRenderParams = { ...pRef.current, rotation: rotRef.current };
+      try {
+        if (useGPURef.current) {
+          glRef.current?.render(p);
+        } else {
+          drawCPU(p);
+        }
+      } catch (err) {
+        // Swallow render errors so the loop never dies permanently.
+        console.warn('[Koch] render error:', err);
       }
       rafRef.current = requestAnimationFrame(frame);
     }
@@ -205,8 +253,12 @@ export default function Koch() {
         const { width, height } = e.contentRect;
         const dpr = window.devicePixelRatio || 1;
         const w = Math.round(width * dpr), h = Math.round(height * dpr);
-        gpuCanvas.width = w; gpuCanvas.height = h;
-        cpuCanvas.width = w; cpuCanvas.height = h;
+        if (gpuCanvas.width !== w || gpuCanvas.height !== h ||
+            cpuCanvas.width !== w || cpuCanvas.height !== h) {
+          // Store pending size — the RAF loop applies it so that the canvas
+          // clear and redraw happen atomically inside one RAF callback.
+          pendingSizeRef.current = { w, h };
+        }
       }
     });
 
@@ -235,11 +287,20 @@ export default function Koch() {
 
   const onPointerUp = useCallback(() => { dragRef.current = null; }, []);
 
-  const onWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
-    const delta = e.deltaY > 0 ? -0.1 : 0.1;
-    setZoom(z => Math.max(0.1, Math.min(20, z * (1 + delta))));
-    setActivePreset(-1);
+  // Non-passive wheel listener attached imperatively so e.preventDefault()
+  // is guaranteed to work (React synthetic onWheel may be passive in some
+  // browser/React version combinations, preventing preventDefault).
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -0.1 : 0.1;
+      setZoom(z => Math.max(0.1, Math.min(20, z * (1 + delta))));
+      setActivePreset(-1);
+    };
+    el.addEventListener('wheel', handler, { passive: false });
+    return () => el.removeEventListener('wheel', handler);
   }, []);
 
   const applyPreset = useCallback((idx: number) => {
@@ -262,7 +323,7 @@ export default function Koch() {
   const nVerts = VERT_COUNTS[depth] ?? 0;
 
   return (
-    <div className={styles.container}>
+    <div ref={containerRef} className={styles.container}>
       {/* GPU canvas */}
       <canvas
         ref={glCanvasRef}
@@ -271,7 +332,6 @@ export default function Koch() {
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        onWheel={onWheel}
       />
       {/* CPU canvas */}
       <canvas
@@ -281,7 +341,6 @@ export default function Koch() {
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        onWheel={onWheel}
       />
 
       {/* Sidebar */}

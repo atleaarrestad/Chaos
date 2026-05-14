@@ -151,7 +151,11 @@ const CS_INDEX: Record<string, number> = { cyan: 0, heat: 1, plasma: 2, mono: 3 
 
 export function detectWebGL(): boolean {
   try {
-    return !!document.createElement('canvas').getContext('webgl2');
+    const c = document.createElement('canvas');
+    const gl = c.getContext('webgl2');
+    if (!gl) return false;
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
+    return true;
   } catch {
     return false;
   }

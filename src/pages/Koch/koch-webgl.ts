@@ -150,14 +150,25 @@ export interface KochWebGLRenderer {
 }
 
 export function detectWebGL(): boolean {
-  try { return !!document.createElement('canvas').getContext('webgl2'); }
-  catch { return false; }
+  try {
+    const c = document.createElement('canvas');
+    const gl = c.getContext('webgl2');
+    if (!gl) return false;
+    // Immediately release the test context so it doesn't count against the
+    // browser's active-context limit (~16 in Chrome).
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
+    return true;
+  } catch { return false; }
 }
 
 export function createKochRenderer(canvas: HTMLCanvasElement): KochWebGLRenderer | null {
   const gl = createWebGL2Context(canvas, {
-    alpha: true, antialias: true, depth: false, stencil: false,
-    premultipliedAlpha: false,
+    // alpha: false makes the canvas opaque so the CSS background (#070712)
+    // never bleeds through. preserveDrawingBuffer must stay false (the
+    // default) so the compositor only sees fully-composited frames — with
+    // it true the GPU's async clear can be sampled before drawArrays
+    // completes, producing a one-frame black flash.
+    alpha: false, antialias: true, depth: false, stencil: false,
   });
   if (!gl) return null;
 
@@ -258,7 +269,9 @@ export function createKochRenderer(canvas: HTMLCanvasElement): KochWebGLRenderer
       if (W === 0 || H === 0) return;
 
       ctx.viewport(0, 0, W, H);
-      ctx.clearColor(0, 0, 0, 0);
+      // Clear to the container background colour (#070712) so any missed
+      // draw frame shows the background rather than black.
+      ctx.clearColor(7 / 255, 7 / 255, 18 / 255, 1);
       ctx.clear(ctx.COLOR_BUFFER_BIT);
       ctx.useProgram(prog);
 

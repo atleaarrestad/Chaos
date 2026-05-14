@@ -51,7 +51,11 @@ export interface WebGLRenderer {
 /** Returns true if WebGL2 is available in this browser. */
 export function detectWebGL(): boolean {
   try {
-    return !!document.createElement('canvas').getContext('webgl2');
+    const c = document.createElement('canvas');
+    const gl = c.getContext('webgl2');
+    if (!gl) return false;
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
+    return true;
   } catch {
     return false;
   }
