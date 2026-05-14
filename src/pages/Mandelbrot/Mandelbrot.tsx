@@ -125,6 +125,8 @@ export default function Mandelbrot() {
   const [useGPU,        setUseGPU]        = useState(() => detectWebGL());
 
   // ── Animation state ────────────────────────────────────────────────────────
+  const savingRef              = useRef(false);
+  const [saving,         setSaving]         = useState(false);
   const [animating,        setAnimating]        = useState(false);
   const [animMode,         setAnimMode]         = useState<'zoom' | 'julia' | 'both'>('zoom');
   const [animSpeed,        setAnimSpeed]        = useState(0.5);
@@ -793,14 +795,86 @@ export default function Mandelbrot() {
     }
   }, [cancelRender, renderGPU, startRender]);
 
-  const saveImage = useCallback(() => {
-    // In GPU mode the rendered image lives on the WebGL canvas.
-    const canvas = useGPURef.current ? glCanvasRef.current : canvasRef.current;
+  const saveImage = useCallback(async (targetW: number) => {
+    if (savingRef.current) return;
+    const canvas = canvasRef.current;
     if (!canvas) return;
-    const a = document.createElement('a');
-    a.href     = canvas.toDataURL('image/png');
-    a.download = 'mandelbrot.png';
-    a.click();
+
+    const aspect  = canvas.height / canvas.width;
+    const targetH = Math.round(targetW * aspect);
+    const cp      = cpRef.current;
+    const v       = view.current;
+
+    savingRef.current = true;
+    setSaving(true);
+    try {
+      const offscreen    = document.createElement('canvas');
+      offscreen.width    = targetW;
+      offscreen.height   = targetH;
+
+      if (useGPURef.current) {
+        const renderer = createWebGLRenderer(offscreen);
+        if (!renderer) return;
+        renderer.render({
+          canvasW: targetW, canvasH: targetH,
+          centerX: v.centerX, centerY: v.centerY, zoom: v.zoom,
+          maxIter: cp.maxIterMode === 'auto' ? adaptiveMaxIter(v.zoom) : cp.maxIterManual,
+          paletteId: cp.paletteId, colorSpeed: cp.colorSpeed,
+          colorOffset: cp.colorOffset, invertColors: cp.invertColors,
+          juliaMode: cp.juliaMode, juliaRe: cp.juliaRe, juliaIm: cp.juliaIm,
+          hpCenterX: v.hpCX, hpCenterY: v.hpCY,
+        });
+        renderer.dispose();
+      } else {
+        // CPU path — spawn workers targeting the offscreen canvas dimensions
+        await new Promise<void>((resolve) => {
+          const ctx      = offscreen.getContext('2d')!;
+          const tileList = buildTileList(targetW, targetH);
+          const exportId = Date.now();
+          let received   = 0;
+          const nWorkers = Math.max(1, Math.min(navigator.hardwareConcurrency ?? 4, 8));
+          const chunks: Tile[][] = Array.from({ length: nWorkers }, () => []);
+          tileList.forEach((tile, i) => chunks[i % nWorkers].push(tile));
+          const baseMsg = {
+            canvasW: targetW, canvasH: targetH,
+            centerX: v.centerX, centerY: v.centerY, zoom: v.zoom,
+            maxIter: cp.maxIterMode === 'auto' ? adaptiveMaxIter(v.zoom) : cp.maxIterManual,
+            id: exportId,
+            paletteId: cp.paletteId, colorSpeed: cp.colorSpeed,
+            colorOffset: cp.colorOffset, invertColors: cp.invertColors,
+            juliaMode: cp.juliaMode, juliaRe: cp.juliaRe, juliaIm: cp.juliaIm,
+          };
+          const saveWorkers: Worker[] = [];
+          const onMsg = (e: MessageEvent<TileResult>) => {
+            if (e.data.id !== exportId) return;
+            const r = e.data;
+            ctx.putImageData(
+              new ImageData(new Uint8ClampedArray(r.buf.buffer as ArrayBuffer), r.tileW, r.tileH),
+              r.tileX, r.tileY,
+            );
+            received++;
+            if (received >= tileList.length) {
+              saveWorkers.forEach(w => w.terminate());
+              resolve();
+            }
+          };
+          chunks.filter(c => c.length > 0).forEach(chunk => {
+            const w = new Worker(new URL('./mandelbrot.worker.ts', import.meta.url), { type: 'module' });
+            w.onmessage = onMsg;
+            w.postMessage({ ...baseMsg, tileList: chunk });
+            saveWorkers.push(w);
+          });
+        });
+      }
+
+      const a    = document.createElement('a');
+      a.href     = offscreen.toDataURL('image/png');
+      a.download = `mandelbrot-${targetW}px.png`;
+      a.click();
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
   }, []);
 
   return (
@@ -981,9 +1055,24 @@ export default function Mandelbrot() {
         </div>{/* end sidebarPanels */}
 
         <div className={styles.sidebarActions}>
-        <button className={styles.saveBtn} type="button" onClick={saveImage}>
-          ↓ Save PNG
-        </button>
+        <div className={styles.saveGroup}>
+          <span className={styles.saveGroupLabel}>
+            {saving ? 'Saving…' : '↓ Save PNG'}
+          </span>
+          <div className={styles.saveResRow}>
+            {([['8K', 8192], ['4K', 4096], ['2K', 2048], ['1K', 1024]] as const).map(([label, w]) => (
+              <button
+                key={label}
+                className={styles.saveResBtn}
+                type="button"
+                disabled={saving}
+                onClick={() => saveImage(w)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
 
         <button className={styles.resetBtn} type="button" onClick={reset}>
           Reset View
