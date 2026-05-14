@@ -49,14 +49,13 @@ function kochSubdivide(verts: Pt[], antiKoch: boolean): Pt[] {
   return result;
 }
 
-/** Generate Koch snowflake polygon vertices (CCW, circumradius ≈ 1). */
-export function generateKoch(depth: number, antiKoch = false): Pt[] {
-  // Equilateral triangle, CCW, circumradius = 1, vertex pointing up.
-  let verts: Pt[] = [
-    [0, 1],
-    [-SQRT3 / 2, -0.5],
-    [SQRT3 / 2, -0.5],
-  ];
+/** Generate Koch snowflake polygon vertices (CCW, circumradius = 1). */
+export function generateKoch(depth: number, antiKoch = false, sides = 3): Pt[] {
+  // Regular n-gon, CCW, circumradius = 1, first vertex pointing up.
+  let verts: Pt[] = Array.from({ length: sides }, (_, k) => {
+    const a = Math.PI / 2 + (2 * Math.PI * k) / sides;
+    return [Math.cos(a), Math.sin(a)] as Pt;
+  });
   for (let d = 0; d < depth; d++) {
     verts = kochSubdivide(verts, antiKoch);
   }
@@ -117,6 +116,7 @@ const CS_INDEX: Record<ColorSchemeId, number> = { frost: 0, mono: 1 };
 
 export interface KochRenderParams {
   depth:       number;
+  sides:       number;
   antiKoch:    boolean;
   colorScheme: ColorSchemeId;
   fillMode:    FillModeId;
@@ -199,12 +199,12 @@ export function createKochRenderer(canvas: HTMLCanvasElement): KochWebGLRenderer
     return vao;
   }
 
-  function syncGeometry(depth: number, antiKoch: boolean): void {
-    const key = `${depth}-${antiKoch}`;
+  function syncGeometry(depth: number, antiKoch: boolean, sides: number): void {
+    const key = `${depth}-${antiKoch}-${sides}`;
     if (key === curKey) return;
     curKey = key;
 
-    const pts = generateKoch(depth, antiKoch);
+    const pts = generateKoch(depth, antiKoch, sides);
     nVerts = pts.length;
 
     // Fill buffer: [center, ...pts, pts[0]] for TRIANGLE_FAN
@@ -246,7 +246,7 @@ export function createKochRenderer(canvas: HTMLCanvasElement): KochWebGLRenderer
 
   return {
     render(p: KochRenderParams) {
-      syncGeometry(p.depth, p.antiKoch);
+      syncGeometry(p.depth, p.antiKoch, p.sides);
 
       const W = canvas.width, H = canvas.height;
       if (W === 0 || H === 0) return;

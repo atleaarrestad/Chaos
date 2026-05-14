@@ -19,6 +19,7 @@ import styles from './Koch.module.css';
 interface Preset {
   label: string;
   depth: number;
+  sides: number;
   antiKoch: boolean;
   colorScheme: ColorSchemeId;
   fillMode: FillModeId;
@@ -26,12 +27,12 @@ interface Preset {
 }
 
 const PRESETS: Preset[] = [
-  { label: 'Snow',  depth: 5, antiKoch: false, colorScheme: 'mono',  fillMode: 'outline', glow: true  },
-  { label: 'Frost', depth: 4, antiKoch: false, colorScheme: 'frost', fillMode: 'both',    glow: true  },
-  { label: 'Wire',  depth: 6, antiKoch: false, colorScheme: 'mono',  fillMode: 'outline', glow: true  },
-  { label: 'Anti',  depth: 4, antiKoch: true,  colorScheme: 'frost', fillMode: 'both',    glow: true  },
-  { label: 'Fill',  depth: 5, antiKoch: false, colorScheme: 'frost', fillMode: 'filled',  glow: false },
-  { label: 'Deep',  depth: 7, antiKoch: false, colorScheme: 'mono',  fillMode: 'outline', glow: true  },
+  { label: 'Snow',  depth: 5, sides: 3, antiKoch: false, colorScheme: 'mono',  fillMode: 'outline', glow: true  },
+  { label: 'Frost', depth: 4, sides: 3, antiKoch: false, colorScheme: 'frost', fillMode: 'both',    glow: true  },
+  { label: 'Wire',  depth: 6, sides: 3, antiKoch: false, colorScheme: 'mono',  fillMode: 'outline', glow: true  },
+  { label: 'Anti',  depth: 4, sides: 3, antiKoch: true,  colorScheme: 'frost', fillMode: 'both',    glow: true  },
+  { label: 'Fill',  depth: 5, sides: 3, antiKoch: false, colorScheme: 'frost', fillMode: 'filled',  glow: false },
+  { label: 'Deep',  depth: 7, sides: 3, antiKoch: false, colorScheme: 'mono',  fillMode: 'outline', glow: true  },
 ];
 
 const DEFAULT: Preset = PRESETS[0];
@@ -47,7 +48,21 @@ const FILL_OPTS = [
   { value: 'outline', label: 'Outline only'   },
 ];
 
-const VERT_COUNTS = Array.from({ length: 8 }, (_, d) => 3 * 4 ** d);
+const SIDES_OPTS = [
+  { value: '3', label: 'Triangle (3)' },
+  { value: '4', label: 'Square (4)'   },
+  { value: '5', label: 'Pentagon (5)' },
+  { value: '6', label: 'Hexagon (6)'  },
+  { value: '7', label: 'Heptagon (7)' },
+  { value: '8', label: 'Octagon (8)'  },
+];
+
+const SHAPE_NAMES: Record<number, string> = {
+  3: 'Triangle', 4: 'Square', 5: 'Pentagon',
+  6: 'Hexagon',  7: 'Heptagon', 8: 'Octagon',
+};
+
+const VERT_COUNTS = (sides: number, depth: number) => sides * 4 ** depth;
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -58,6 +73,7 @@ export default function Koch() {
 
   // Controls state
   const [depth,       setDepth]       = useState(DEFAULT.depth);
+  const [sides,       setSides]       = useState(DEFAULT.sides);
   const [antiKoch,    setAntiKoch]    = useState(DEFAULT.antiKoch);
   const [colorScheme, setColorScheme] = useState<ColorSchemeId>(DEFAULT.colorScheme);
   const [fillMode,    setFillMode]    = useState<FillModeId>(DEFAULT.fillMode);
@@ -90,10 +106,11 @@ export default function Koch() {
   // Synchronously mirror state into a ref so the RAF loop always reads the
   // latest values without waiting for a useEffect to fire after paint.
   const pRef = useRef<KochRenderParams>({
-    depth, antiKoch, colorScheme, fillMode, glow, zoom,
+    depth, sides, antiKoch, colorScheme, fillMode, glow, zoom,
     panX, panY, rotation: 0,
   });
   pRef.current.depth       = depth;
+  pRef.current.sides       = sides;
   pRef.current.antiKoch    = antiKoch;
   pRef.current.colorScheme = colorScheme;
   pRef.current.fillMode    = fillMode;
@@ -138,7 +155,7 @@ export default function Koch() {
     ctx.fillStyle = '#070712';
     ctx.fillRect(0, 0, W, H);
 
-    const pts = generateKoch(p.depth, p.antiKoch);
+    const pts = generateKoch(p.depth, p.antiKoch, p.sides);
     const scale = 0.88 * p.zoom * Math.min(W, H) / 2;
     const cos = Math.cos(p.rotation), sin = Math.sin(p.rotation);
 
@@ -302,6 +319,7 @@ export default function Koch() {
   const applyPreset = useCallback((idx: number) => {
     const p = PRESETS[idx];
     setDepth(p.depth);
+    setSides(p.sides);
     setAntiKoch(p.antiKoch);
     setColorScheme(p.colorScheme);
     setFillMode(p.fillMode);
@@ -316,7 +334,7 @@ export default function Koch() {
     rotRef.current = 0;
   }, []);
 
-  const nVerts = VERT_COUNTS[depth] ?? 0;
+  const nVerts = VERT_COUNTS(sides, depth);
 
   return (
     <div ref={containerRef} className={styles.container}>
@@ -360,6 +378,12 @@ export default function Koch() {
           {/* Fractal */}
           <ControlPanel title="Fractal">
             <ControlGroup>
+              <SelectControl
+                label="Shape"
+                value={String(sides)}
+                options={SIDES_OPTS}
+                onChange={v => { setSides(Number(v)); setActivePreset(-1); }}
+              />
               <Slider
                 label="Depth"
                 value={depth}
@@ -419,7 +443,7 @@ export default function Koch() {
       {/* HUD */}
       <div className={styles.hud}>
         <div className={styles.hudLeft}>
-          <span className={styles.hudTitle}>Koch {antiKoch ? 'Anti-Snowflake' : 'Snowflake'}</span>
+          <span className={styles.hudTitle}>Koch {antiKoch ? 'Anti-' : ''}{SHAPE_NAMES[sides] ?? `${sides}-gon`}</span>
           <span className={styles.hudSub}>
             depth {depth} · {nVerts.toLocaleString()} verts
           </span>
