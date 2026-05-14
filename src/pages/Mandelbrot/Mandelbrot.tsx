@@ -128,14 +128,14 @@ export default function Mandelbrot() {
   const [animating,        setAnimating]        = useState(false);
   const [animMode,         setAnimMode]         = useState<'zoom' | 'julia' | 'both'>('zoom');
   const [animSpeed,        setAnimSpeed]        = useState(0.5);
-  const [animZoomDir,      setAnimZoomDir]      = useState<'in' | 'out' | 'pingpong'>('pingpong');
+  const [animZoomDir,      setAnimZoomDir]      = useState<'in' | 'out' | 'pingpong'>('in');
   const [juliaOrbitRadius, setJuliaOrbitRadius] = useState(0.7);
   const [colorCycle,       setColorCycle]       = useState(false);
 
   // Animation refs — read inside rAF loop to avoid stale closures
   const animModeRef          = useRef<'zoom' | 'julia' | 'both'>('zoom');
   const animSpeedRef         = useRef(0.5);
-  const animZoomDirRef       = useRef<'in' | 'out' | 'pingpong'>('pingpong');
+  const animZoomDirRef       = useRef<'in' | 'out' | 'pingpong'>('in');
   const juliaOrbitRadiusRef  = useRef(0.7);
   const juliaAngleRef        = useRef(0.0);
   const colorCycleRef        = useRef(false);
