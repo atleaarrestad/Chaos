@@ -3,7 +3,9 @@ import {
   Slider, Toggle, SelectControl,
   ControlPanel, ControlGroup,
 } from '@/components/Controls';
+import { detectWebGL2 } from '@/lib/gpu/context';
 import styles from './Lorenz.module.css';
+import { LorenzGPU, type LorenzGPUParams } from './lorenz-gpu';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -23,6 +25,7 @@ interface AttractorRuntime {
   id: string;
   pos: [number, number, number];
   rb: RingBuf;
+  poincare: PoincareBuf;
 }
 
 const ATTRACTOR_PALETTE = [
@@ -44,6 +47,7 @@ const MAX_SPEED = 200; // typical top speed for classic Lorenz params
 // ─── Ring buffer ─────────────────────────────────────────────────────────────
 
 const MAX_BUF = 10_000;
+const MAX_POINCARE = 6_000;
 
 interface RingBuf {
   xyz: Float32Array;
@@ -69,6 +73,36 @@ function ringGet(rb: RingBuf, i: number, visible: number): [number, number, numb
   const slot = ((rb.head - visible + i) % MAX_BUF + MAX_BUF) % MAX_BUF;
   const b = slot * 3;
   return [rb.xyz[b], rb.xyz[b + 1], rb.xyz[b + 2]];
+}
+
+// ─── Poincaré section buffer ─────────────────────────────────────────────────
+
+interface PoincareBuf {
+  xy: Float32Array; // packed [u0,v0, u1,v1, ...] — meaning of u,v depends on sectionAxis
+  head: number;
+  total: number;
+  // running auto-scale bounds
+  minU: number; maxU: number;
+  minV: number; maxV: number;
+}
+
+const makePoincare = (): PoincareBuf => ({
+  xy: new Float32Array(MAX_POINCARE * 2),
+  head: 0,
+  total: 0,
+  minU:  Infinity, maxU: -Infinity,
+  minV:  Infinity, maxV: -Infinity,
+});
+
+function poincarePush(pb: PoincareBuf, u: number, v: number): void {
+  const i = pb.head * 2;
+  pb.xy[i] = u; pb.xy[i + 1] = v;
+  pb.head = (pb.head + 1) % MAX_POINCARE;
+  pb.total++;
+  if (u < pb.minU) pb.minU = u;
+  if (u > pb.maxU) pb.maxU = u;
+  if (v < pb.minV) pb.minV = v;
+  if (v > pb.maxV) pb.maxV = v;
 }
 
 // ─── RK4 integration ─────────────────────────────────────────────────────────
@@ -127,6 +161,8 @@ const COLORS: Record<ColorScheme, (t: number) => RGB> = {
     const s = (t - 0.80) / 0.20;                   return [c(255),            c(140 - 100 * s), c(20)]; },
 };
 
+type SectionAxis = 'x' | 'y' | 'z';
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 interface Params {
@@ -134,6 +170,7 @@ interface Params {
   dt: number;
   speed: number; trailLength: number; colorScheme: ColorScheme;
   running: boolean; showAxes: boolean; autoRotate: boolean;
+  showPoincare: boolean; showReturnMap: boolean; poincareZ: number; sectionAxis: SectionAxis;
 }
 
 // ─── Bounding box for the 3D room ────────────────────────────────────────────
@@ -154,31 +191,38 @@ export default function Lorenz() {
   const [running,     setRunning]     = useState(true);
   const [showAxes,    setShowAxes]    = useState(false);
   const [autoRotate,  setAutoRotate]  = useState(false);
+  const [showPoincare, setShowPoincare] = useState(false);
+  const [poincareZ,    setPoincareZ]    = useState(0);
+  const [sectionAxis,  setSectionAxis]  = useState<SectionAxis>('y');
+  const [showReturnMap, setShowReturnMap] = useState(false);
+  const [gpuAvailable, setGpuAvailable]   = useState(false);
 
   const canvasRef          = useRef<HTMLCanvasElement>(null);
   const sidebarRef         = useRef<HTMLDivElement>(null);
   const rafRef             = useRef(0);
-  const attractorStatesRef = useRef<AttractorRuntime[]>([{ id: 'a0', pos: [0.1, 0, 0], rb: makeRing() }]);
+  const attractorStatesRef = useRef<AttractorRuntime[]>([{ id: 'a0', pos: [0.1, 0, 0], rb: makeRing(), poincare: makePoincare() }]);
   const rotRef             = useRef({ x: 0.4, y: 0.5 });
   const dragRef            = useRef<{ x: number; y: number } | null>(null);
   const zoomRef            = useRef(1);
+  const gpuRef             = useRef<LorenzGPU | null>(null);
 
   // Mutable params ref — the rAF loop reads this to avoid stale closures.
-  const pRef = useRef<Params>({ attractors, dt, speed, trailLength, colorScheme, running, showAxes, autoRotate });
+  const pRef = useRef<Params>({ attractors, dt, speed, trailLength, colorScheme, running, showAxes, autoRotate, showPoincare, showReturnMap, poincareZ, sectionAxis });
 
   useEffect(() => {
-    pRef.current = { attractors, dt, speed, trailLength, colorScheme, running, showAxes, autoRotate };
-  }, [attractors, dt, speed, trailLength, colorScheme, running, showAxes, autoRotate]);
+    pRef.current = { attractors, dt, speed, trailLength, colorScheme, running, showAxes, autoRotate, showPoincare, showReturnMap, poincareZ, sectionAxis };
+  }, [attractors, dt, speed, trailLength, colorScheme, running, showAxes, autoRotate, showPoincare, showReturnMap, poincareZ, sectionAxis]);
 
   const reset = useCallback(() => {
-    attractorStatesRef.current.forEach(s => { s.pos = [0.1, 0, 0]; s.rb = makeRing(); });
+    attractorStatesRef.current.forEach(s => { s.pos = [0.1, 0, 0]; s.rb = makeRing(); s.poincare = makePoincare(); });
+    gpuRef.current?.reset();
   }, []);
 
   const addAttractor = useCallback(() => {
     setAttractors(prev => {
       const id = `a${Date.now()}`;
       const color = ATTRACTOR_PALETTE[prev.length % ATTRACTOR_PALETTE.length];
-      attractorStatesRef.current.push({ id, pos: [0.1, 0, 0], rb: makeRing() });
+      attractorStatesRef.current.push({ id, pos: [0.1, 0, 0], rb: makeRing(), poincare: makePoincare() });
       return [...prev, { id, sigma: 10, rho: 28, beta: 8 / 3, color }];
     });
   }, []);
@@ -207,6 +251,39 @@ export default function Lorenz() {
     rotRef.current = { x: rx, y: ry };
   }, []);
 
+  useEffect(() => {
+    const available = detectWebGL2();
+    setGpuAvailable(available);
+    if (!available) return;
+    try {
+      const def = attractors[0];
+      const gpu = new LorenzGPU(def.sigma, def.rho, def.beta);
+      gpuRef.current = gpu;
+    } catch (err) {
+      console.warn('LorenzGPU init failed:', err);
+      setGpuAvailable(false);
+    }
+    return () => {
+      gpuRef.current?.dispose();
+      gpuRef.current = null;
+    };
+  }, []);
+
+  // Clear Poincaré points whenever the section plane or axis changes
+  useEffect(() => {
+    attractorStatesRef.current.forEach(s => { s.poincare = makePoincare(); });
+    gpuRef.current?.reset();
+  }, [poincareZ, sectionAxis]);
+
+  useEffect(() => {
+    gpuRef.current?.reset();
+  }, [attractors[0]?.sigma, attractors[0]?.rho, attractors[0]?.beta]);
+
+  // Reset section value to a sensible default when axis changes
+  useEffect(() => {
+    setPoincareZ(sectionAxis === 'z' ? 27 : 0);
+  }, [sectionAxis]);
+
   // ─── Animation loop ───────────────────────────────────────────────────────
 
   const draw = useCallback(() => {
@@ -215,7 +292,10 @@ export default function Lorenz() {
 
     const ctx = canvas.getContext('2d')!;
     const W = canvas.width, H = canvas.height;
-    const { attractors, dt, speed, trailLength, colorScheme, running, showAxes, autoRotate } = pRef.current;
+    const {
+      attractors, dt, speed, trailLength, colorScheme, running,
+      showAxes, autoRotate, showPoincare, showReturnMap, poincareZ, sectionAxis,
+    } = pRef.current;
     const states = attractorStatesRef.current;
 
     // Auto-rotate: nudge yaw each frame when not dragging
@@ -232,11 +312,26 @@ export default function Lorenz() {
         if (!def) continue;
         let [px, py, pz] = state.pos;
         for (let i = 0; i < speed; i++) {
+          const [opx, opy, opz] = [px, py, pz];
           [px, py, pz] = rk4(px, py, pz, def.sigma, def.rho, def.beta, dt);
           if (!isFinite(px) || !isFinite(py) || !isFinite(pz)) {
             [px, py, pz] = [0.1, 0, 0];
             state.rb = makeRing();
+            state.poincare = makePoincare();
             break;
+          }
+          // Detect upward crossing of the Poincaré plane
+          if (showPoincare) {
+            if (sectionAxis === 'z' && opz < poincareZ && pz >= poincareZ) {
+              const f = (poincareZ - opz) / (pz - opz);
+              poincarePush(state.poincare, opx + f * (px - opx), opy + f * (py - opy));
+            } else if (sectionAxis === 'y' && opy < poincareZ && py >= poincareZ) {
+              const f = (poincareZ - opy) / (py - opy);
+              poincarePush(state.poincare, opx + f * (px - opx), opz + f * (pz - opz));
+            } else if (sectionAxis === 'x' && opx < poincareZ && px >= poincareZ) {
+              const f = (poincareZ - opx) / (px - opx);
+              poincarePush(state.poincare, opy + f * (py - opy), opz + f * (pz - opz));
+            }
           }
           ringPush(state.rb, px, py, pz);
         }
@@ -267,13 +362,13 @@ export default function Lorenz() {
     const cy = H * 0.5 + oy * scale;
 
     // ─── 3D room: back-wall panels + grid + box edges + tick labels ─────────
+    const toS = (wx: number, wy: number, wz: number): [number, number] => {
+      const [sx, sy] = proj(wx, wy, wz);
+      return [cx + sx * scale, cy - sy * scale];
+    };
+
     if (showAxes) {
       const { x: BX, y: BY, z: BZ, step: STEP } = BOX;
-
-      const toS = (wx: number, wy: number, wz: number): [number, number] => {
-        const [sx, sy] = proj(wx, wy, wz);
-        return [cx + sx * scale, cy - sy * scale];
-      };
 
       // Signed depth of a face normal under the current rotation.
       // < 0  →  face points away from viewer  →  back face (draw it).
@@ -402,6 +497,41 @@ export default function Lorenz() {
       ctx.restore();
     }
 
+    // ─── Poincaré section plane (drawn behind trails) ─────────────────────
+    if (showPoincare) {
+      ctx.save();
+      // Build 4 corners of the plane in world space based on which axis it cuts
+      const pc = sectionAxis === 'z' ? [
+        toS(BOX.x[0], BOX.y[0], poincareZ), toS(BOX.x[1], BOX.y[0], poincareZ),
+        toS(BOX.x[1], BOX.y[1], poincareZ), toS(BOX.x[0], BOX.y[1], poincareZ),
+      ] : sectionAxis === 'y' ? [
+        toS(BOX.x[0], poincareZ, BOX.z[0]), toS(BOX.x[1], poincareZ, BOX.z[0]),
+        toS(BOX.x[1], poincareZ, BOX.z[1]), toS(BOX.x[0], poincareZ, BOX.z[1]),
+      ] : [
+        toS(poincareZ, BOX.y[0], BOX.z[0]), toS(poincareZ, BOX.y[1], BOX.z[0]),
+        toS(poincareZ, BOX.y[1], BOX.z[1]), toS(poincareZ, BOX.y[0], BOX.z[1]),
+      ];
+      ctx.beginPath();
+      ctx.moveTo(pc[0][0], pc[0][1]);
+      for (let i = 1; i < pc.length; i++) ctx.lineTo(pc[i][0], pc[i][1]);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(129,140,248,0.07)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(129,140,248,0.45)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([5, 5]);
+      ctx.stroke();
+      // Plane label
+      const labelPt = pc[1];
+      ctx.setLineDash([]);
+      ctx.font = `${Math.max(11, scale * 1.6)}px var(--font-sans, system-ui)`;
+      ctx.fillStyle = 'rgba(129,140,248,0.7)';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`${sectionAxis} = ${poincareZ}`, labelPt[0] + 6, labelPt[1]);
+      ctx.restore();
+    }
+
     // ─── Draw all attractor trails ────────────────────────────────────────
     const isVelocity = colorScheme === 'velocity';
 
@@ -484,6 +614,35 @@ export default function Lorenz() {
       ctx.fill();
     }
 
+    // ─── Poincaré crossing dots on 3D plane ───────────────────────────────
+    if (showPoincare) {
+      ctx.save();
+      for (let ai = 0; ai < states.length; ai++) {
+        const state = states[ai];
+        const def = attractors.find(a => a.id === state.id);
+        if (!def) continue;
+        const pb = state.poincare;
+        const count = Math.min(pb.total, MAX_POINCARE);
+        if (count === 0) continue;
+        const [pr, pg, pb2] = ai === 0 ? [129, 140, 248] : def.color.split(',').map(Number);
+        ctx.fillStyle = `rgba(${pr},${pg},${pb2},0.9)`;
+        for (let i = 0; i < count; i++) {
+          const si = ((pb.head - count + i) % MAX_POINCARE + MAX_POINCARE) % MAX_POINCARE;
+          const u = pb.xy[si * 2];
+          const v = pb.xy[si * 2 + 1];
+          // Map (u,v) back to 3D world coords for the section axis
+          const [wx, wy, wz] = sectionAxis === 'z' ? [u, v, poincareZ]
+                              : sectionAxis === 'y' ? [u, poincareZ, v]
+                              :                       [poincareZ, u, v];
+          const [sx, sy] = toS(wx, wy, wz);
+          ctx.beginPath();
+          ctx.arc(sx, sy, Math.max(2, scale * 0.25), 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.restore();
+    }
+
     // ─── Velocity legend bar ───────────────────────────────────────────────
     if (colorScheme === 'velocity') {
       const barW  = Math.round(W * 0.28);
@@ -514,6 +673,221 @@ export default function Lorenz() {
       ctx.fillText('slow', barX, barY - 3);
       ctx.textAlign = 'right';
       ctx.fillText('fast', barX + barW, barY - 3);
+      ctx.restore();
+    }
+
+    const gpu = gpuRef.current;
+    if (gpu && running && (showPoincare || showReturnMap)) {
+      const def = attractors[0];
+      const gpuParams: LorenzGPUParams = {
+        dt: pRef.current.dt,
+        sigma: def.sigma, rho: def.rho, beta: def.beta,
+        sectionAxis: pRef.current.sectionAxis,
+        sectionVal: pRef.current.poincareZ,
+      };
+      gpu.step(gpuParams);
+    }
+
+    // ─── GPU section panel (or CPU fallback) ─────────────────────────────
+    if (showPoincare) {
+      const panelS = Math.round(Math.min(W, H) * 0.27);
+      const panelX = Math.round(W * 0.013);
+      const panelY = H - panelS - Math.round(H * 0.085);
+      const titleH = Math.round(panelS * 0.16);
+      const pad = Math.round(panelS * 0.1);
+
+      if (gpu) {
+        const plotS = panelS - titleH - 2 * pad;
+        const plotX = panelX + pad;
+        const plotY = panelY + titleH + pad;
+
+        // Background fill
+        ctx.save();
+        ctx.fillStyle = 'rgba(8,8,18,0.90)';
+        ctx.beginPath();
+        ctx.roundRect(panelX, panelY, panelS, panelS, Math.round(panelS * 0.04));
+        ctx.fill();
+        // Clip GPU blit to plot area so it never bleeds outside the panel
+        ctx.beginPath();
+        ctx.rect(plotX, plotY, plotS, plotS);
+        ctx.clip();
+        gpu.drawPanel(ctx, 0, plotX, plotY, plotS, plotS);
+        ctx.restore();
+
+        const [uLabel, vLabel] = sectionAxis === 'z' ? ['x', 'y']
+                                : sectionAxis === 'y' ? ['x', 'z'] : ['y', 'z'];
+        ctx.save();
+        ctx.strokeStyle = 'rgba(129,140,248,0.4)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.roundRect(panelX, panelY, panelS, panelS, Math.round(panelS * 0.04));
+        ctx.stroke();
+
+        const fsTitle = Math.max(13, Math.round(panelS * 0.10));
+        ctx.font = `${fsTitle}px var(--font-sans, system-ui)`;
+        ctx.fillStyle = 'rgba(180,190,230,0.9)';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(`Poincaré  ${sectionAxis} = ${poincareZ}`, panelX + panelS / 2, panelY + titleH / 2);
+
+        const fsLbl = Math.max(10, Math.round(panelS * 0.082));
+        ctx.font = `${fsLbl}px var(--font-sans, system-ui)`;
+        ctx.fillStyle = 'rgba(160,170,210,0.55)';
+        ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+        ctx.fillText(uLabel + '→', panelX + pad + plotS - 2, panelY + titleH + pad + plotS);
+        ctx.textAlign = 'right'; ctx.textBaseline = 'top';
+        ctx.fillText('↑' + vLabel, panelX + pad + plotS, panelY + titleH + pad + 2);
+
+        ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+        ctx.fillStyle = 'rgba(129,140,248,0.45)';
+        ctx.fillText('GPU', panelX + panelS - pad, panelY + panelS - Math.round(panelS * 0.04));
+        ctx.restore();
+      } else {
+        const totalPts = states.reduce((s, st) => s + st.poincare.total, 0);
+        const plotS = panelS - titleH - 2 * pad;
+        const pcx = panelX + pad + plotS / 2;
+        const pcy = panelY + titleH + pad + plotS / 2;
+
+        const [uLabel, vLabel] = sectionAxis === 'z' ? ['x', 'y']
+                               : sectionAxis === 'y' ? ['x', 'z']
+                               : ['y', 'z'];
+
+        let minU = Infinity, maxU = -Infinity, minV = Infinity, maxV = -Infinity;
+        for (const st of states) {
+          if (st.poincare.total === 0) continue;
+          minU = Math.min(minU, st.poincare.minU);
+          maxU = Math.max(maxU, st.poincare.maxU);
+          minV = Math.min(minV, st.poincare.minV);
+          maxV = Math.max(maxV, st.poincare.maxV);
+        }
+        const hasData = isFinite(minU) && isFinite(maxU);
+        const rangeU = hasData ? Math.max((maxU - minU) * 1.15, 1) : 40;
+        const rangeV = hasData ? Math.max((maxV - minV) * 1.15, 1) : 50;
+        const cU = hasData ? (minU + maxU) / 2 : 0;
+        const cV = hasData ? (minV + maxV) / 2 : 25;
+
+        ctx.save();
+        ctx.fillStyle = 'rgba(8,8,18,0.90)';
+        ctx.beginPath();
+        ctx.roundRect(panelX, panelY, panelS, panelS, Math.round(panelS * 0.04));
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(129,140,248,0.4)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([]);
+        ctx.stroke();
+
+        const fsTitle = Math.max(13, Math.round(panelS * 0.10));
+        ctx.font = `${fsTitle}px var(--font-sans, system-ui)`;
+        ctx.fillStyle = 'rgba(180,190,230,0.9)';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`Poincaré  ${sectionAxis} = ${poincareZ}`, panelX + panelS / 2, panelY + titleH / 2);
+
+        const axX = pcx + (0 - cU) / (rangeU / 2) * (plotS / 2);
+        const axY = pcy - (0 - cV) / (rangeV / 2) * (plotS / 2);
+        const clampedAxX = Math.max(panelX + pad, Math.min(panelX + pad + plotS, axX));
+        const clampedAxY = Math.max(panelY + titleH + pad, Math.min(panelY + titleH + pad + plotS, axY));
+        ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+        ctx.lineWidth = 0.5;
+        ctx.beginPath();
+        ctx.moveTo(panelX + pad, clampedAxY); ctx.lineTo(panelX + pad + plotS, clampedAxY); ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(clampedAxX, panelY + titleH + pad); ctx.lineTo(clampedAxX, panelY + titleH + pad + plotS); ctx.stroke();
+
+        const fsLbl = Math.max(10, Math.round(panelS * 0.082));
+        ctx.font = `${fsLbl}px var(--font-sans, system-ui)`;
+        ctx.fillStyle = 'rgba(160,170,210,0.55)';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+        ctx.fillText(uLabel, panelX + pad + plotS - 6, clampedAxY + 3);
+        ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+        ctx.fillText(vLabel, clampedAxX - 4, panelY + titleH + pad + 6);
+
+        if (!hasData) {
+          ctx.fillStyle = 'rgba(180,190,230,0.3)';
+          ctx.font = `${fsLbl}px var(--font-sans, system-ui)`;
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText('waiting for crossings…', pcx, pcy);
+        } else {
+          for (let ai = 0; ai < states.length; ai++) {
+            const state = states[ai];
+            const def = attractors.find(a => a.id === state.id);
+            if (!def) continue;
+            const pb = state.poincare;
+            const count = Math.min(pb.total, MAX_POINCARE);
+            if (count === 0) continue;
+            const [pr, pg, pb2] = ai === 0 ? [129, 140, 248] : def.color.split(',').map(Number);
+            ctx.fillStyle = `rgba(${pr},${pg},${pb2},0.9)`;
+            for (let i = 0; i < count; i++) {
+              const si = ((pb.head - count + i) % MAX_POINCARE + MAX_POINCARE) % MAX_POINCARE;
+              const u = pb.xy[si * 2];
+              const v = pb.xy[si * 2 + 1];
+              const sx = pcx + (u - cU) / (rangeU / 2) * (plotS / 2);
+              const sy = pcy - (v - cV) / (rangeV / 2) * (plotS / 2);
+              if (sx < panelX + pad - 2 || sx > panelX + pad + plotS + 2) continue;
+              if (sy < panelY + titleH + pad - 2 || sy > panelY + titleH + pad + plotS + 2) continue;
+              ctx.fillRect(sx - 1.5, sy - 1.5, 3, 3);
+            }
+          }
+        }
+
+        ctx.fillStyle = 'rgba(129,140,248,0.45)';
+        ctx.font = `${Math.max(10, Math.round(panelS * 0.078))}px var(--font-sans, system-ui)`;
+        ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+        ctx.fillText(`${totalPts} pts`, panelX + panelS - pad, panelY + panelS - Math.round(panelS * 0.04));
+
+        ctx.restore();
+      }
+    }
+
+    // ─── Return map panel ────────────────────────────────────────────────
+    if (showReturnMap && gpuRef.current) {
+      const panelS = Math.round(Math.min(W, H) * 0.27);
+      // Stack directly above the Poincaré panel with a small gap
+      const panelX = Math.round(W * 0.013);
+      const poincPanelY = H - panelS - Math.round(H * 0.085);
+      const gap = Math.round(panelS * 0.05);
+      const panelY = poincPanelY - panelS - gap;
+      const titleH = Math.round(panelS * 0.16);
+      const pad = Math.round(panelS * 0.1);
+      const plotS = panelS - titleH - 2 * pad;
+
+      // Background + clipped GPU blit
+      ctx.save();
+      ctx.fillStyle = 'rgba(8,8,18,0.90)';
+      ctx.beginPath();
+      ctx.roundRect(panelX, panelY, panelS, panelS, Math.round(panelS * 0.04));
+      ctx.fill();
+      ctx.beginPath();
+      ctx.rect(panelX + pad, panelY + titleH + pad, plotS, plotS);
+      ctx.clip();
+      gpuRef.current.drawPanel(ctx, 1, panelX + pad, panelY + titleH + pad, plotS, plotS);
+      ctx.restore();
+
+      ctx.save();
+      ctx.strokeStyle = 'rgba(251,146,60,0.4)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.roundRect(panelX, panelY, panelS, panelS, Math.round(panelS * 0.04));
+      ctx.stroke();
+
+      const fsTitle = Math.max(13, Math.round(panelS * 0.10));
+      ctx.font = `${fsTitle}px var(--font-sans, system-ui)`;
+      ctx.fillStyle = 'rgba(230,200,180,0.9)';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('Return map  zₙ₊₁ vs zₙ', panelX + panelS / 2, panelY + titleH / 2);
+
+      const fsLbl = Math.max(10, Math.round(panelS * 0.082));
+      ctx.font = `${fsLbl}px var(--font-sans, system-ui)`;
+      ctx.fillStyle = 'rgba(210,180,140,0.55)';
+      ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+      ctx.fillText('zₙ→', panelX + pad + plotS - 2, panelY + titleH + pad + plotS);
+      ctx.textAlign = 'right'; ctx.textBaseline = 'top';
+      ctx.fillText('↑zₙ₊₁', panelX + pad + plotS, panelY + titleH + pad + 2);
+
+      ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+      ctx.fillStyle = 'rgba(251,146,60,0.45)';
+      ctx.fillText('GPU', panelX + panelS - pad, panelY + panelS - Math.round(panelS * 0.04));
       ctx.restore();
     }
 
@@ -646,13 +1020,49 @@ export default function Lorenz() {
           </ControlGroup>
         </ControlPanel>
 
-        <ControlPanel title="Display" defaultOpen={false}>
+        <ControlPanel title={`Display${gpuAvailable ? ' · GPU' : ' · CPU'}`} defaultOpen={false}>
           <ControlGroup>
             <Toggle
               label="Show axes"
               value={showAxes}
               onChange={setShowAxes}
               description="X / Y / Z reference frame"
+            />
+            <Toggle
+              label="Poincaré section"
+              value={showPoincare}
+              onChange={setShowPoincare}
+              description="Plane intersections of the trajectory"
+            />
+            {showPoincare && (
+              <>
+                <SelectControl
+                  label="Section axis"
+                  value={sectionAxis}
+                  onChange={setSectionAxis}
+                  options={[
+                    { value: 'y' as const, label: 'y = const  (shows x, z)' },
+                    { value: 'z' as const, label: 'z = const  (shows x, y)' },
+                    { value: 'x' as const, label: 'x = const  (shows y, z)' },
+                  ]}
+                />
+                <Slider
+                  label={`${sectionAxis} =`}
+                  value={poincareZ}
+                  onChange={setPoincareZ}
+                  min={sectionAxis === 'z' ? 0 : sectionAxis === 'y' ? -30 : -25}
+                  max={sectionAxis === 'z' ? 50 : sectionAxis === 'y' ?  30 :  25}
+                  step={0.5}
+                  format={v => v.toFixed(1)}
+                />
+              </>
+            )}
+            <Toggle
+              label="Return map"
+              value={showReturnMap}
+              onChange={setShowReturnMap}
+              disabled={!gpuAvailable}
+              description={gpuAvailable ? 'GPU density of zₙ₊₁ vs zₙ' : 'Requires WebGL2 GPU support'}
             />
             <SelectControl
               label="Color scheme"

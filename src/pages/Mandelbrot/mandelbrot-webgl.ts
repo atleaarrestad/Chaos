@@ -13,6 +13,7 @@
 /// orbit and the centre is passed as a quad-float uniform.
 
 import Decimal from 'decimal.js';
+import { compileShader } from '@/lib/gpu/shader';
 import { hpPrecision, decimalToQF, f64ToQF } from './hp';
 import type { PaletteId } from './mandelbrot.worker';
 
@@ -300,20 +301,6 @@ void main() {
   fragColor = vec4(mix(colA, colB, f), 1.0);
 }
 `;
-
-// ── Setup helpers ─────────────────────────────────────────────────────────────
-
-function compileShader(gl: WebGL2RenderingContext, type: number, src: string): WebGLShader {
-  const sh = gl.createShader(type)!;
-  gl.shaderSource(sh, src);
-  gl.compileShader(sh);
-  if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
-    const log = gl.getShaderInfoLog(sh);
-    gl.deleteShader(sh);
-    throw new Error(`Shader compile error:\n${log}`);
-  }
-  return sh;
-}
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
