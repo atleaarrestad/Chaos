@@ -6,11 +6,10 @@ import {
 } from '@/components/Controls';
 import { detectWebGL2 } from '@/lib/gpu/context';
 import styles from './DoublePendulum.module.css';
-import { DoublePendulumGPU, type DoublePendulumParams, type ColorMode } from './double-pendulum-gpu';
+import { DoublePendulumGPU, STEPS_PER_FRAME, type DoublePendulumParams, type ColorMode } from './double-pendulum-gpu';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const STEPS_PER_FRAME = 4; // must match GPU shader MAX_STEPS usage
 const RAD = Math.PI / 180;
 const DEG = 180 / Math.PI;
 
@@ -99,6 +98,37 @@ function cpuRK4(
   ];
 }
 
+// ─── Trail colour: blue (oldest) → green (mid) → yellow (newest) ──────────────
+
+function trailColor(t: number, alpha: string): string {
+  let r: number, g: number, b: number;
+  if (t < 0.5) {
+    const s = t * 2;
+    r = Math.round(30  + s * (74  - 30));
+    g = Math.round(100 + s * (222 - 100));
+    b = Math.round(255 + s * (128 - 255));
+  } else {
+    const s = (t - 0.5) * 2;
+    r = Math.round(74  + s * (255 - 74));
+    g = Math.round(222 + s * (210 - 222));
+    b = Math.round(128 + s * (40  - 128));
+  }
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// ─── Total mechanical energy (m1=m2=1) ───────────────────────────────────────
+
+function totalEnergy(
+  th1: number, om1: number, th2: number, om2: number,
+  g: number, l1: number, l2: number,
+): number {
+  const ke = l1*l1*om1*om1
+           + 0.5*l2*l2*om2*om2
+           + l1*l2*om1*om2*Math.cos(th1 - th2);
+  const pe = -g * (2*l1*Math.cos(th1) + l2*Math.cos(th2));
+  return ke + pe;
+}
+
 // ─── Params live-ref type ─────────────────────────────────────────────────────
 
 interface LiveParams {
@@ -140,6 +170,7 @@ export default function DoublePendulum() {
   const canvasRef      = useRef<HTMLCanvasElement>(null);
   const phasePanelRef  = useRef<HTMLCanvasElement>(null);
   const sidebarRef     = useRef<HTMLDivElement>(null);
+  const energyHudRef   = useRef<HTMLSpanElement>(null);
   const rafRef         = useRef(0);
   const gpuRef         = useRef<DoublePendulumGPU | null>(null);
 
@@ -212,6 +243,7 @@ export default function DoublePendulum() {
     setG(preset.g);
     setL1(preset.l1);
     setL2(preset.l2);
+    setSpread(DEFAULT_SPREAD);
     // refRef and trail are reset by the useEffect that watches these state changes
   }, []);
 
@@ -246,6 +278,9 @@ export default function DoublePendulum() {
     phaseHeadRef.current  = 0;
     phaseTotalRef.current = 0;
     phaseMaxOmRef.current = 8;
+    const tc = trailCanvasRef.current;
+    const tCtx = tc.getContext('2d');
+    if (tCtx) { tCtx.fillStyle = BG_COLOR; tCtx.fillRect(0, 0, tc.width, tc.height); }
     gpuRef.current?.reset(gpuParams());
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [l1, l2]);
@@ -439,6 +474,12 @@ export default function DoublePendulum() {
       }
       refRef.current = { th1, om1, th2, om2 };
 
+      // Update energy HUD imperatively (no re-render needed)
+      if (energyHudRef.current) {
+        const E = totalEnergy(th1, om1, th2, om2, p.g, p.l1, p.l2);
+        energyHudRef.current.textContent = `E = ${E.toFixed(2)} J`;
+      }
+
       // Store phase-portrait point (wrap θ₁ to [-π, π])
       const twoPi  = 2 * Math.PI;
       const th1w   = ((th1 % twoPi) + twoPi) % twoPi;
@@ -460,7 +501,7 @@ export default function DoublePendulum() {
         tCtx.fillRect(0, 0, W, H);
         // Advance + scatter
         const gp = gpuParams();
-        for (let i = 0; i < p.speed; i++) gpu.step(gp);
+        gpu.step(gp, p.speed * STEPS_PER_FRAME);
         gpu.renderScatter(gp);
         const sq = Math.min(W, H);
         const ox = (W - sq) / 2;
@@ -524,7 +565,7 @@ export default function DoublePendulum() {
               if (i === segStart) tCtx.moveTo(px, py);
               else tCtx.lineTo(px, py);
             }
-            tCtx.strokeStyle = `rgba(74,222,128,${alpha})`;
+            tCtx.strokeStyle = trailColor(t, alpha);
             tCtx.stroke();
           }
         }
@@ -674,12 +715,6 @@ export default function DoublePendulum() {
               min={1} max={300} step={1}
               format={v => `${Math.round(v)}s`}
             />
-            <Slider
-              label="Point size"
-              value={pointSize} onChange={setPointSize}
-              min={1} max={5} step={0.5}
-              format={v => v.toFixed(1)}
-            />
           </ControlGroup>
         </ControlPanel>
 
@@ -762,6 +797,7 @@ export default function DoublePendulum() {
           <span className={styles.hudSub}>
             {theta1Deg}° / {theta2Deg}°
           </span>
+          <span className={styles.hudSub} ref={energyHudRef} />
         </div>
         <div className={styles.hudRight}>
           {showEnsemble && gpuAvailable && (

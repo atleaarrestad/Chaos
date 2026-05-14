@@ -19,7 +19,7 @@ import { createWebGL2Context } from '@/lib/gpu/context';
 import { createProgram } from '@/lib/gpu/shader';
 
 export const N_PENDULUMS = 16384;
-const STEPS_PER_FRAME = 4;
+export const STEPS_PER_FRAME = 4;
 
 // ─── Shaders ──────────────────────────────────────────────────────────────────
 
@@ -56,7 +56,7 @@ vec4 rk4(vec4 s) {
   return s + (k1 + 2.0*k2 + 2.0*k3 + k4) * (u_dt / 6.0);
 }
 
-#define MAX_STEPS 16
+#define MAX_STEPS 32
 void main() {
   vec4 state = a_state;
   for (int i = 0; i < MAX_STEPS; i++) {
@@ -287,8 +287,10 @@ export class DoublePendulumGPU {
     return vao;
   }
 
-  /** Run STEPS_PER_FRAME integration steps for all pendulums via transform feedback. */
-  step(p: DoublePendulumParams): void {
+  /** Run integration steps for all pendulums via transform feedback.
+   *  stepsOverride defaults to STEPS_PER_FRAME; pass speed*STEPS_PER_FRAME to collapse
+   *  N speed ticks into a single GPU dispatch instead of N separate ones. */
+  step(p: DoublePendulumParams, stepsOverride?: number): void {
     const gl = this.gl;
 
     // ping=false: read A, write B → flip to true
@@ -301,7 +303,7 @@ export class DoublePendulumGPU {
     gl.uniform1f(this.uG,     p.g);
     gl.uniform1f(this.uL1Int, p.l1);
     gl.uniform1f(this.uL2Int, p.l2);
-    gl.uniform1i(this.uSteps, STEPS_PER_FRAME);
+    gl.uniform1i(this.uSteps, stepsOverride ?? STEPS_PER_FRAME);
 
     gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, this.tf);
     gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, dstBuf);
