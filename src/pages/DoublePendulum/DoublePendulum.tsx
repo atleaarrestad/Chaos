@@ -23,6 +23,8 @@ const DEFAULT_DT     = 0.001;
 const DEFAULT_SPEED  = 1;          // real-time by default
 const DEFAULT_SPREAD = 0.01;
 const DEFAULT_TRAIL  = 15.0;  // seconds of trail
+const DEFAULT_L1     = 1.0;   // arm 1 length (relative)
+const DEFAULT_L2     = 1.0;   // arm 2 length (relative)
 
 const MAX_PHASE_PTS  = 5_000;
 const MAX_TRAIL_PTS  = 72_000;  // (x,y,t) per point — covers 600s at 120Hz
@@ -74,13 +76,13 @@ const PRESETS = [
 
 function cpuRK4(
   th1: number, om1: number, th2: number, om2: number,
-  dt: number, g: number,
+  dt: number, g: number, l1: number, l2: number,
 ): [number, number, number, number] {
   const deriv = (th1: number, om1: number, th2: number, om2: number) => {
     const d = th1 - th2, sd = Math.sin(d), cd = Math.cos(d);
     const denom = 3 - Math.cos(2 * d);
-    const a1 = (-3*g*Math.sin(th1) - g*Math.sin(th1-2*th2) - 2*sd*(om2*om2+om1*om1*cd)) / denom;
-    const a2 = (2*sd*(2*om1*om1 + 2*g*Math.cos(th1) + om2*om2*cd)) / denom;
+    const a1 = (-3*g*Math.sin(th1) - g*Math.sin(th1-2*th2) - 2*sd*(l2*om2*om2 + l1*om1*om1*cd)) / (l1*denom);
+    const a2 = (2*sd*(2*l1*om1*om1 + 2*g*Math.cos(th1) + l2*om2*om2*cd)) / (l2*denom);
     return [om1, a1, om2, a2] as const;
   };
   const h = dt / 2;
@@ -104,6 +106,7 @@ interface LiveParams {
   g: number; dt: number; speed: number; spread: number;
   trailSecs: number; pointSize: number; colorMode: ColorMode;
   running: boolean; showPendulum: boolean; showPhase: boolean; showEnsemble: boolean;
+  l1: number; l2: number;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -116,6 +119,8 @@ export default function DoublePendulum() {
   const [omega2,  setOmega2]  = useState(DEFAULT_OMEGA2);
   const [g,       setG]       = useState(DEFAULT_G);
   const [spread,  setSpread]  = useState(DEFAULT_SPREAD);
+  const [l1,      setL1]      = useState(DEFAULT_L1);
+  const [l2,      setL2]      = useState(DEFAULT_L2);
 
   // ── Animation params ────────────────────────────────────────────────────────
   const [dt,        setDt]        = useState(DEFAULT_DT);
@@ -159,22 +164,26 @@ export default function DoublePendulum() {
   const pRef = useRef<LiveParams>({
     theta1, theta2, omega1, omega2, g, dt, speed, spread,
     trailSecs, pointSize, colorMode, running, showPendulum, showPhase, showEnsemble,
+    l1, l2,
   });
 
   useEffect(() => {
     pRef.current = {
       theta1, theta2, omega1, omega2, g, dt, speed, spread,
       trailSecs, pointSize, colorMode, running, showPendulum, showPhase, showEnsemble,
+      l1, l2,
     };
   }, [theta1, theta2, omega1, omega2, g, dt, speed, spread,
-      trailSecs, pointSize, colorMode, running, showPendulum, showPhase, showEnsemble]);
+      trailSecs, pointSize, colorMode, running, showPendulum, showPhase, showEnsemble,
+      l1, l2]);
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
 
   const gpuParams = useCallback((): DoublePendulumParams => {
     const p = pRef.current;
     return { theta1: p.theta1, omega1: p.omega1, theta2: p.theta2, omega2: p.omega2,
-             g: p.g, dt: p.dt, spread: p.spread, pointSize: p.pointSize, colorMode: p.colorMode };
+             g: p.g, dt: p.dt, spread: p.spread, pointSize: p.pointSize, colorMode: p.colorMode,
+             l1: p.l1, l2: p.l2 };
   }, []);
 
   const resetSimulation = useCallback(() => {
@@ -225,11 +234,22 @@ export default function DoublePendulum() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Reset when physics initial conditions change
+  // Reset when physics initial conditions or arm lengths change
   useEffect(() => {
     if (gpuRef.current) resetSimulation();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [theta1, theta2, omega1, omega2, g, spread]);
+
+  // Arm length changes invalidate stored trail pixel coords — always wipe
+  useEffect(() => {
+    trailHeadRef.current  = 0;
+    trailCountRef.current = 0;
+    phaseHeadRef.current  = 0;
+    phaseTotalRef.current = 0;
+    phaseMaxOmRef.current = 8;
+    gpuRef.current?.reset(gpuParams());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [l1, l2]);
 
   // ── Draw helpers ─────────────────────────────────────────────────────────────
 
@@ -238,15 +258,16 @@ export default function DoublePendulum() {
     ctx: CanvasRenderingContext2D,
     W: number, H: number,
     th1: number, th2: number,
+    l1: number, l2: number,
   ) {
-    const scale  = Math.min(W, H) / 4.4;
+    const scale  = Math.min(W, H) / (2.2 * (l1 + l2));
     const px     = W / 2;
     const py     = H / 2;
 
-    const b1x = px + Math.sin(th1) * scale;
-    const b1y = py + Math.cos(th1) * scale;
-    const b2x = b1x + Math.sin(th2) * scale;
-    const b2y = b1y + Math.cos(th2) * scale;
+    const b1x = px + Math.sin(th1) * scale * l1;
+    const b1y = py + Math.cos(th1) * scale * l1;
+    const b2x = b1x + Math.sin(th2) * scale * l2;
+    const b2y = b1y + Math.cos(th2) * scale * l2;
 
     ctx.save();
     ctx.lineCap  = 'round';
@@ -411,7 +432,7 @@ export default function DoublePendulum() {
       // Always advance CPU reference pendulum
       let { th1, om1, th2, om2 } = refRef.current;
       for (let s = 0; s < p.speed * STEPS_PER_FRAME; s++) {
-        [th1, om1, th2, om2] = cpuRK4(th1, om1, th2, om2, p.dt, p.g);
+        [th1, om1, th2, om2] = cpuRK4(th1, om1, th2, om2, p.dt, p.g, p.l1, p.l2);
         if (!isFinite(th1) || !isFinite(om1)) { th1 = p.theta1; om1 = 0; th2 = p.theta2; om2 = 0; break; }
       }
       refRef.current = { th1, om1, th2, om2 };
@@ -446,11 +467,11 @@ export default function DoublePendulum() {
       } else {
         // Single-pendulum trail: ring buffer → redraw each frame with explicit alpha.
         // This avoids the 8-bit canvas precision bug where tiny per-frame alphas round to 0.
-        const scale = Math.min(W, H) / 4.4;
-        const b1x = W / 2 + Math.sin(th1) * scale;
-        const b1y = H / 2 + Math.cos(th1) * scale;
-        const b2x = b1x + Math.sin(th2) * scale;
-        const b2y = b1y + Math.cos(th2) * scale;
+        const scale = Math.min(W, H) / (2.2 * (p.l1 + p.l2));
+        const b1x = W / 2 + Math.sin(th1) * scale * p.l1;
+        const b1y = H / 2 + Math.cos(th1) * scale * p.l1;
+        const b2x = b1x + Math.sin(th2) * scale * p.l2;
+        const b2y = b1y + Math.cos(th2) * scale * p.l2;
 
         // Store current position with wall-clock timestamp (seconds)
         const now  = performance.now() / 1000;
@@ -515,7 +536,7 @@ export default function DoublePendulum() {
 
     if (p.showPendulum) {
       const { th1, th2 } = refRef.current;
-      drawPendulumGeometry(ctx, W, H, th1, th2);
+      drawPendulumGeometry(ctx, W, H, th1, th2, p.l1, p.l2);
     }
 
     // ── Phase portrait panel ─────────────────────────────────────────────────
@@ -565,6 +586,7 @@ export default function DoublePendulum() {
       {/* ── Floating sidebar ───────────────────────────────────────────────── */}
       <div ref={sidebarRef} className={styles.sidebar}>
 
+        <div className={styles.sidebarPanels}>
         <ControlPanel title="Presets">
           <ControlGroup>
             <div className={styles.snapGrid}>
@@ -590,6 +612,18 @@ export default function DoublePendulum() {
               value={g} onChange={setG}
               min={1} max={20} step={0.1}
               format={v => v.toFixed(1)} unit="m/s²"
+            />
+            <Slider
+              label="Arm 1 length"
+              value={l1} onChange={setL1}
+              min={0.2} max={3} step={0.05}
+              format={v => v.toFixed(2)} unit="m"
+            />
+            <Slider
+              label="Arm 2 length"
+              value={l2} onChange={setL2}
+              min={0.2} max={3} step={0.05}
+              format={v => v.toFixed(2)} unit="m"
             />
             <Slider
               label="θ₁"
@@ -683,10 +717,13 @@ export default function DoublePendulum() {
             </>)}
           </ControlGroup>
         </ControlPanel>
+        </div>{/* end sidebarPanels */}
 
-        <button className={styles.resetBtn} type="button" onClick={resetSimulation}>
-          Reset Simulation
-        </button>
+        <div className={styles.sidebarActions}>
+          <button className={styles.resetBtn} type="button" onClick={resetSimulation}>
+            Reset Simulation
+          </button>
+        </div>
       </div>
 
       {/* ── Phase portrait panel ─────────────────────────────────────────────── */}

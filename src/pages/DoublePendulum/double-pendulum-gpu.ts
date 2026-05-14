@@ -30,19 +30,21 @@ in vec4 a_state; // (th1, om1, th2, om2)
 
 uniform float u_dt;
 uniform float u_g;
+uniform float u_l1;
+uniform float u_l2;
 uniform int   u_steps;
 
 out vec4 v_newState;
 
-// Double pendulum derivatives: m1=m2=1, l1=l2=1
+// Double pendulum derivatives: m1=m2=1, general rod lengths l1, l2
 vec4 dpDeriv(vec4 s) {
   float th1 = s.x, om1 = s.y, th2 = s.z, om2 = s.w;
   float d    = th1 - th2;
   float sd   = sin(d), cd = cos(d);
   float denom = 3.0 - cos(2.0 * d);
   float a1 = (-3.0*u_g*sin(th1) - u_g*sin(th1 - 2.0*th2)
-              - 2.0*sd*(om2*om2 + om1*om1*cd)) / denom;
-  float a2 = (2.0*sd*(2.0*om1*om1 + 2.0*u_g*cos(th1) + om2*om2*cd)) / denom;
+              - 2.0*sd*(u_l2*om2*om2 + u_l1*om1*om1*cd)) / (u_l1 * denom);
+  float a2 = (2.0*sd*(2.0*u_l1*om1*om1 + 2.0*u_g*cos(th1) + u_l2*om2*om2*cd)) / (u_l2 * denom);
   return vec4(om1, a1, om2, a2);
 }
 
@@ -80,6 +82,8 @@ in vec4 a_state; // (th1, om1, th2, om2)
 uniform float u_pointSize;
 uniform int   u_nParticles;
 uniform int   u_colorMode; // 0=heat, 1=rainbow, 2=green
+uniform float u_l1;
+uniform float u_l2;
 
 out vec4 v_color; // pre-multiplied RGBA
 
@@ -112,11 +116,11 @@ void main() {
   float th1 = a_state.x;
   float th2 = a_state.z;
 
-  // Second-bob position (l1=l2=1), NDC range [-2.2, 2.2]
-  float x2 = sin(th1) + sin(th2);
-  float y2 = -(cos(th1) + cos(th2));
-
-  gl_Position  = vec4(x2 / 2.2, y2 / 2.2, 0.0, 1.0);
+  // Second-bob position scaled to NDC
+  float x2 = u_l1*sin(th1) + u_l2*sin(th2);
+  float y2 = -(u_l1*cos(th1) + u_l2*cos(th2));
+  float maxR = (u_l1 + u_l2) * 1.1;
+  gl_Position  = vec4(x2 / maxR, y2 / maxR, 0.0, 1.0);
   gl_PointSize = u_pointSize;
 
   float t = float(gl_VertexID) / float(u_nParticles - 1);
@@ -176,6 +180,8 @@ export interface DoublePendulumParams {
   spread: number;  // rad – initial θ₁ spread across ensemble
   pointSize: number;
   colorMode: ColorMode;
+  l1: number;      // arm 1 length (m, relative)
+  l2: number;      // arm 2 length (m, relative)
 }
 
 // ─── GPU class ────────────────────────────────────────────────────────────────
@@ -203,11 +209,15 @@ export class DoublePendulumGPU {
   private uDt:    WebGLUniformLocation;
   private uG:     WebGLUniformLocation;
   private uSteps: WebGLUniformLocation;
+  private uL1Int: WebGLUniformLocation;
+  private uL2Int: WebGLUniformLocation;
 
   // Scatter uniforms
   private uPointSize:  WebGLUniformLocation;
   private uNParticles: WebGLUniformLocation;
   private uColorMode:  WebGLUniformLocation;
+  private uL1Sct: WebGLUniformLocation;
+  private uL2Sct: WebGLUniformLocation;
 
   /** Ping-pong: false → A is current, true → B is current */
   private ping = false;
@@ -231,11 +241,15 @@ export class DoublePendulumGPU {
     this.uDt    = gl.getUniformLocation(pi, 'u_dt')!;
     this.uG     = gl.getUniformLocation(pi, 'u_g')!;
     this.uSteps = gl.getUniformLocation(pi, 'u_steps')!;
+    this.uL1Int = gl.getUniformLocation(pi, 'u_l1')!;
+    this.uL2Int = gl.getUniformLocation(pi, 'u_l2')!;
 
     const ps = this.progScatter;
     this.uPointSize  = gl.getUniformLocation(ps, 'u_pointSize')!;
     this.uNParticles = gl.getUniformLocation(ps, 'u_nParticles')!;
     this.uColorMode  = gl.getUniformLocation(ps, 'u_colorMode')!;
+    this.uL1Sct = gl.getUniformLocation(ps, 'u_l1')!;
+    this.uL2Sct = gl.getUniformLocation(ps, 'u_l2')!;
 
     const byteSize = N_PENDULUMS * 4 * 4;
     this.bufStateA = this.makeBuffer(generateInitialState(params), null);
@@ -285,6 +299,8 @@ export class DoublePendulumGPU {
     gl.useProgram(this.progIntegrate);
     gl.uniform1f(this.uDt,    p.dt);
     gl.uniform1f(this.uG,     p.g);
+    gl.uniform1f(this.uL1Int, p.l1);
+    gl.uniform1f(this.uL2Int, p.l2);
     gl.uniform1i(this.uSteps, STEPS_PER_FRAME);
 
     gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, this.tf);
@@ -321,6 +337,8 @@ export class DoublePendulumGPU {
     gl.useProgram(this.progScatter);
     gl.uniform1f(this.uPointSize, p.pointSize);
     gl.uniform1i(this.uNParticles, N_PENDULUMS);
+    gl.uniform1f(this.uL1Sct, p.l1);
+    gl.uniform1f(this.uL2Sct, p.l2);
     gl.uniform1i(this.uColorMode,
       p.colorMode === 'rainbow' ? 1 : p.colorMode === 'green' ? 2 : 0);
 
