@@ -93,7 +93,7 @@ export default function Mandelbrot() {
   const view           = useRef<View>({ ...INITIAL });
   const workersRef     = useRef<Worker[]>([]);
   const webglRef       = useRef<WebGLRenderer | null>(null);
-  const useGPURef      = useRef(false);
+  const useGPURef      = useRef(detectWebGL());
   const renderIdRef    = useRef(0);
   const renderTimer    = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dragRef        = useRef<{ x: number; y: number } | null>(null);
@@ -121,7 +121,7 @@ export default function Mandelbrot() {
   const [juliaRe,       setJuliaRe]       = useState(-0.7);
   const [juliaIm,       setJuliaIm]       = useState(0.27015);
   const [gpuAvailable,  setGpuAvailable]  = useState(false);
-  const [useGPU,        setUseGPU]        = useState(false);
+  const [useGPU,        setUseGPU]        = useState(() => detectWebGL());
 
   // Mutable ref read by startRender — avoids stale closures without needing
   // to recreate callbacks every time a UI param changes.
@@ -322,10 +322,16 @@ export default function Mandelbrot() {
     if (available && glCanvasRef.current) {
       try {
         webglRef.current = createWebGLRenderer(glCanvasRef.current);
+        renderGPU();
       } catch (e) {
         console.warn('WebGL renderer failed to initialise:', e);
         setGpuAvailable(false);
+        useGPURef.current = false;
+        setUseGPU(false);
       }
+    } else {
+      useGPURef.current = false;
+      setUseGPU(false);
     }
     return () => {
       cancelRender();

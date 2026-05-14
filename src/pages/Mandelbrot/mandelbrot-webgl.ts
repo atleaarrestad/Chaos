@@ -181,6 +181,10 @@ uniform int   u_orbitLen;   // number of valid orbit entries (≤ u_maxIter)
 // Centre as quad float32 (4 × float32, ~96 bits) for deep-zoom precision.
 uniform vec4  u_centerQFRe; // (a, b, c, d) where a+b+c+d ≈ centre.re
 uniform vec4  u_centerQFIm;
+// Pan delta between view centre and the orbit reference centre (complex coords, float32).
+// Non-zero only when the orbit is reused from a previous position (skipOrbit drag at HP zoom).
+// ε_orbit = eps + u_orbitDelta keeps perturbation correct while the orbit is stale.
+uniform vec2  u_orbitDelta;
 uniform vec2  u_juliaC;     // Julia constant (float32 fine — not zoom-dependent)
 // Reference orbit texture: RGBA32F, height=2, width=maxIter.
 //   Row 0, texel i: (re_a, re_b, im_a, im_b)
@@ -244,9 +248,11 @@ void main() {
     if (i >= u_orbitLen) break;
 
     // Perturbation recurrence uses only Z leading-float (δ is tiny so error×δ ≈ 0).
+    // ε must be the pixel's offset from the orbit reference centre, not the view centre.
+    // u_orbitDelta = (C_view − C_orbit) bridges the two when the orbit is reused during drag.
     vec2 Z = vec2(Zre.x, Zim.x);
     d = cMul(2.0 * Z + d, d);
-    if (!u_juliaMode) d += eps;
+    if (!u_juliaMode) d += eps + u_orbitDelta;
 
     iter++;
   }
@@ -365,6 +371,7 @@ export function createWebGLRenderer(canvas: HTMLCanvasElement): WebGLRenderer | 
     orbitLen:     gl.getUniformLocation(prog, 'u_orbitLen')!,
     centerQFRe:   gl.getUniformLocation(prog, 'u_centerQFRe')!,
     centerQFIm:   gl.getUniformLocation(prog, 'u_centerQFIm')!,
+    orbitDelta:   gl.getUniformLocation(prog, 'u_orbitDelta')!,
     juliaC:       gl.getUniformLocation(prog, 'u_juliaC')!,
     orbitTex:     gl.getUniformLocation(prog, 'u_orbitTex')!,
   };
@@ -421,6 +428,19 @@ export function createWebGLRenderer(canvas: HTMLCanvasElement): WebGLRenderer | 
     const qfIm = hpY ? decimalToQF(new Decimal(hpY)) : f64ToQF(p.centerY);
     gl.uniform4f(U.centerQFRe,   qfRe[0], qfRe[1], qfRe[2], qfRe[3]);
     gl.uniform4f(U.centerQFIm,   qfIm[0], qfIm[1], qfIm[2], qfIm[3]);
+    // Orbit delta: C_view − C_orbit_reference in complex coordinates.
+    // Non-zero only during skipOrbit drag at HP zoom; keeps perturbation epsilon correct
+    // when the orbit was computed at a different reference point than the current view centre.
+    // Use HP subtraction when available (Decimal strings both present) to preserve digits.
+    let orbitDeltaRe = 0, orbitDeltaIm = 0;
+    if (hpX && lastOrbitHPCX && hpX !== lastOrbitHPCX) {
+      orbitDeltaRe = new Decimal(hpX).minus(new Decimal(lastOrbitHPCX)).toNumber();
+      orbitDeltaIm = new Decimal(hpY!).minus(new Decimal(lastOrbitHPCY!)).toNumber();
+    } else if (!hpX && !isNaN(lastOrbitCX)) {
+      orbitDeltaRe = p.centerX - lastOrbitCX;
+      orbitDeltaIm = p.centerY - lastOrbitCY;
+    }
+    gl.uniform2f(U.orbitDelta,   orbitDeltaRe, orbitDeltaIm);
     gl.uniform2f(U.juliaC,       p.juliaRe, p.juliaIm);
     gl.uniform1f(U.colorSpeed,   p.colorSpeed);
     gl.uniform1f(U.colorOffset,  p.colorOffset);
