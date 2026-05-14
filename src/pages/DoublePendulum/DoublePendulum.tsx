@@ -22,9 +22,11 @@ const DEFAULT_G      = 9.81;
 const DEFAULT_DT     = 0.001;
 const DEFAULT_SPEED  = 1;          // real-time by default
 const DEFAULT_SPREAD = 0.01;
-const DEFAULT_DECAY  = 0.94;
+const DEFAULT_TRAIL  = 15.0;  // seconds of trail
 
-const MAX_PHASE_PTS = 5_000;
+const MAX_PHASE_PTS  = 5_000;
+const MAX_TRAIL_PTS  = 72_000;  // (x,y,t) per point — covers 600s at 120Hz
+const TRAIL_BUCKETS  = 40;      // alpha groups drawn per frame
 const BG_COLOR = '#050510';
 
 // ─── Presets ──────────────────────────────────────────────────────────────────
@@ -34,37 +36,37 @@ const PRESETS = [
     label: 'Gentle',
     desc: 'Calm arcs, low energy',
     theta1: 50 * RAD, theta2: -20 * RAD, omega1: 0, omega2: 0,
-    g: 9.81, dt: 0.001, speed: 1, decay: 0.94,
+    g: 9.81, dt: 0.001, speed: 1, trailSecs: 4,
   },
   {
     label: 'Classic',
     desc: 'Textbook chaos starting position',
     theta1: 120 * RAD, theta2: 120 * RAD, omega1: 0, omega2: 0,
-    g: 9.81, dt: 0.001, speed: 1, decay: 0.94,
+    g: 9.81, dt: 0.001, speed: 1, trailSecs: 6,
   },
   {
     label: 'Near Tip',
     desc: 'Balanced near top — falls dramatically',
     theta1: 175 * RAD, theta2: 5 * RAD, omega1: 0, omega2: 0,
-    g: 9.81, dt: 0.001, speed: 1, decay: 0.96,
+    g: 9.81, dt: 0.001, speed: 1, trailSecs: 8,
   },
   {
     label: 'Mirror',
     desc: 'Symmetric arms, beautiful folded trails',
     theta1: 110 * RAD, theta2: -110 * RAD, omega1: 0, omega2: 0,
-    g: 9.81, dt: 0.001, speed: 1, decay: 0.95,
+    g: 9.81, dt: 0.001, speed: 1, trailSecs: 6,
   },
   {
     label: 'Windmill',
     desc: 'Angular momentum sends arm spinning',
     theta1: 20 * RAD, theta2: 20 * RAD, omega1: 6, omega2: 0,
-    g: 9.81, dt: 0.001, speed: 1, decay: 0.93,
+    g: 9.81, dt: 0.001, speed: 1, trailSecs: 5,
   },
   {
     label: 'Freefall',
     desc: 'Straight down, pure velocity — maximum chaos',
     theta1: 0, theta2: 0, omega1: 8, omega2: 0,
-    g: 9.81, dt: 0.001, speed: 1, decay: 0.92,
+    g: 9.81, dt: 0.001, speed: 1, trailSecs: 4,
   },
 ] as const;
 
@@ -100,7 +102,7 @@ function cpuRK4(
 interface LiveParams {
   theta1: number; omega1: number; theta2: number; omega2: number;
   g: number; dt: number; speed: number; spread: number;
-  decay: number; pointSize: number; colorMode: ColorMode;
+  trailSecs: number; pointSize: number; colorMode: ColorMode;
   running: boolean; showPendulum: boolean; showPhase: boolean; showEnsemble: boolean;
 }
 
@@ -118,7 +120,7 @@ export default function DoublePendulum() {
   // ── Animation params ────────────────────────────────────────────────────────
   const [dt,        setDt]        = useState(DEFAULT_DT);
   const [speed,     setSpeed]     = useState(DEFAULT_SPEED);
-  const [decay,     setDecay]     = useState(DEFAULT_DECAY);
+  const [trailSecs, setTrailSecs] = useState(DEFAULT_TRAIL);
   const [pointSize, setPointSize] = useState(2.0);
   const [running,   setRunning]   = useState(true);
 
@@ -136,8 +138,13 @@ export default function DoublePendulum() {
   const rafRef         = useRef(0);
   const gpuRef         = useRef<DoublePendulumGPU | null>(null);
 
-  /** Off-screen canvas for accumulated trail (fade + GPU scatter). */
+  /** Off-screen canvas for accumulated trail (GPU ensemble scatter). */
   const trailCanvasRef = useRef<HTMLCanvasElement>(document.createElement('canvas'));
+
+  /** Ring buffer of recent bob2 positions: (x, y, timestamp_sec) triples. */
+  const trailBufRef   = useRef(new Float32Array(MAX_TRAIL_PTS * 3));
+  const trailHeadRef  = useRef(0);
+  const trailCountRef = useRef(0);
 
   /** CPU reference pendulum: exact initial conditions (no spread). */
   const refRef = useRef({ th1: DEFAULT_THETA1, om1: DEFAULT_OMEGA1, th2: DEFAULT_THETA2, om2: DEFAULT_OMEGA2 });
@@ -151,16 +158,16 @@ export default function DoublePendulum() {
   /** Mutable params read by RAF loop to avoid stale closures. */
   const pRef = useRef<LiveParams>({
     theta1, theta2, omega1, omega2, g, dt, speed, spread,
-    decay, pointSize, colorMode, running, showPendulum, showPhase, showEnsemble,
+    trailSecs, pointSize, colorMode, running, showPendulum, showPhase, showEnsemble,
   });
 
   useEffect(() => {
     pRef.current = {
       theta1, theta2, omega1, omega2, g, dt, speed, spread,
-      decay, pointSize, colorMode, running, showPendulum, showPhase, showEnsemble,
+      trailSecs, pointSize, colorMode, running, showPendulum, showPhase, showEnsemble,
     };
   }, [theta1, theta2, omega1, omega2, g, dt, speed, spread,
-      decay, pointSize, colorMode, running, showPendulum, showPhase, showEnsemble]);
+      trailSecs, pointSize, colorMode, running, showPendulum, showPhase, showEnsemble]);
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -177,6 +184,8 @@ export default function DoublePendulum() {
     phaseHeadRef.current  = 0;
     phaseTotalRef.current = 0;
     phaseMaxOmRef.current = 8;
+    trailHeadRef.current  = 0;
+    trailCountRef.current = 0;
     // Clear trail canvas
     const tc = trailCanvasRef.current;
     const tCtx = tc.getContext('2d');
@@ -194,7 +203,7 @@ export default function DoublePendulum() {
     setG(preset.g);
     setDt(preset.dt);
     setSpeed(preset.speed);
-    setDecay(preset.decay);
+    setTrailSecs(preset.trailSecs);
     // refRef and trail are reset by the useEffect that watches these state changes
   }, []);
 
@@ -408,33 +417,84 @@ export default function DoublePendulum() {
       phaseTotalRef.current++;
       if (Math.abs(om1) > phaseMaxOmRef.current) phaseMaxOmRef.current = Math.abs(om1) * 1.15;
 
-      // ── Update trail canvas ──────────────────────────────────────────────
+      // ── Update trail ──────────────────────────────────────────────────────
       const tCtx = tc.getContext('2d')!;
-      tCtx.fillStyle = `rgba(5,5,16,${(1 - p.decay).toFixed(3)})`;
-      tCtx.fillRect(0, 0, W, H);
 
       if (p.showEnsemble && gpu) {
-        // GPU ensemble: advance + scatter.
-        // Draw onto the trail canvas as a centered square so NDC coords align
-        // with the CPU pendulum coordinate system (pivot at W/2, H/2; scale=min(W,H)/4.4).
+        // GPU ensemble: use the old per-frame fade (many points, less precision needed)
+        const perFrame = Math.pow(0.5, 1 / Math.max(p.trailSecs * 60, 1));
+        tCtx.fillStyle = `rgba(5,5,16,${(1 - perFrame).toFixed(5)})`;
+        tCtx.fillRect(0, 0, W, H);
+        // Advance + scatter
         const gp = gpuParams();
         for (let i = 0; i < p.speed; i++) gpu.step(gp);
         gpu.renderScatter(gp);
-        const sq  = Math.min(W, H);
-        const ox  = (W - sq) / 2;
-        const oy  = (H - sq) / 2;
+        const sq = Math.min(W, H);
+        const ox = (W - sq) / 2;
+        const oy = (H - sq) / 2;
         tCtx.drawImage(gpu.canvas, ox, oy, sq, sq);
       } else {
-        // Single-pendulum trail: paint the current second-bob position as a dot
+        // Single-pendulum trail: ring buffer → redraw each frame with explicit alpha.
+        // This avoids the 8-bit canvas precision bug where tiny per-frame alphas round to 0.
         const scale = Math.min(W, H) / 4.4;
         const b1x = W / 2 + Math.sin(th1) * scale;
         const b1y = H / 2 + Math.cos(th1) * scale;
         const b2x = b1x + Math.sin(th2) * scale;
         const b2y = b1y + Math.cos(th2) * scale;
-        tCtx.beginPath();
-        tCtx.arc(b2x, b2y, 1.5, 0, Math.PI * 2);
-        tCtx.fillStyle = 'rgba(74,222,128,0.85)';
-        tCtx.fill();
+
+        // Store current position with wall-clock timestamp (seconds)
+        const now  = performance.now() / 1000;
+        const head = trailHeadRef.current;
+        trailBufRef.current[head * 3]     = b2x;
+        trailBufRef.current[head * 3 + 1] = b2y;
+        trailBufRef.current[head * 3 + 2] = now;
+        trailHeadRef.current  = (head + 1) % MAX_TRAIL_PTS;
+        trailCountRef.current = Math.min(trailCountRef.current + 1, MAX_TRAIL_PTS);
+
+        // Clear and redraw trail from buffer using actual elapsed time for ages.
+        // This is frame-rate independent — works correctly at 60Hz, 120Hz, 144Hz etc.
+        tCtx.fillStyle = BG_COLOR;
+        tCtx.fillRect(0, 0, W, H);
+
+        const count = trailCountRef.current;
+        const H2    = trailHeadRef.current; // next-write slot = oldest slot when full
+
+        // Find the oldest index (in ring-buffer order) that is within trailSecs
+        let validStart = 0;
+        for (let i = 0; i < count; i++) {
+          const fi = ((H2 - count + i + MAX_TRAIL_PTS) % MAX_TRAIL_PTS) * 3;
+          if (now - trailBufRef.current[fi + 2] <= p.trailSecs) { validStart = i; break; }
+          validStart = i + 1;
+        }
+        const validCount = count - validStart;
+
+        if (validCount > 1) {
+          tCtx.lineWidth = 1.5;
+          tCtx.lineCap   = 'round';
+          tCtx.lineJoin  = 'round';
+          const segsPerBucket = Math.max(1, Math.ceil(validCount / TRAIL_BUCKETS));
+
+          for (let b = 0; b < TRAIL_BUCKETS; b++) {
+            const segStart = validStart + b * segsPerBucket;
+            const segEnd   = Math.min(segStart + segsPerBucket, count - 1);
+            if (segStart >= segEnd) break;
+
+            // t = 0 (oldest) → 1 (newest); linear alpha so older segments stay visible
+            const t     = (b + 0.5) / TRAIL_BUCKETS;
+            const alpha = (t * 0.92).toFixed(3);
+
+            tCtx.beginPath();
+            for (let i = segStart; i <= segEnd; i++) {
+              const fi = ((H2 - count + i + MAX_TRAIL_PTS) % MAX_TRAIL_PTS) * 3;
+              const px = trailBufRef.current[fi];
+              const py = trailBufRef.current[fi + 1];
+              if (i === segStart) tCtx.moveTo(px, py);
+              else tCtx.lineTo(px, py);
+            }
+            tCtx.strokeStyle = `rgba(74,222,128,${alpha})`;
+            tCtx.stroke();
+          }
+        }
       }
     }
 
@@ -563,10 +623,10 @@ export default function DoublePendulum() {
               format={v => v.toFixed(4)}
             />
             <Slider
-              label="Trail"
-              value={decay} onChange={setDecay}
-              min={0.5} max={0.995} step={0.005}
-              format={v => `${(v * 100).toFixed(1)}%`}
+              label="Trail length"
+              value={trailSecs} onChange={setTrailSecs}
+              min={1} max={300} step={1}
+              format={v => `${Math.round(v)}s`}
             />
             <Slider
               label="Point size"
