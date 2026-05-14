@@ -23,8 +23,7 @@ const NAV: NavSection[] = [
   {
     section: 'Fractals',
     items: [
-      { path: '/mandelbrot', label: 'Mandelbrot Set', symbol: '∞' },
-      { path: '/julia', label: 'Julia Sets', symbol: 'ℂ' },
+      { path: '/mandelbrot',      label: 'Mandelbrot Set',     symbol: '∞' },
     ],
   },
   {

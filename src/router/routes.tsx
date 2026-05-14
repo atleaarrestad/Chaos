@@ -25,7 +25,6 @@ export const router = createBrowserRouter([
       { index: true, element: <Lazy><Home /></Lazy> },
       { path: 'lorenz', element: <Lazy><Lorenz /></Lazy> },
       { path: 'mandelbrot', element: <Lazy><Mandelbrot /></Lazy> },
-      { path: 'julia', element: <Lazy><ComingSoon /></Lazy> },
       { path: 'cardioid', element: <Lazy><ComingSoon /></Lazy> },
       { path: 'bifurcation', element: <Lazy><ComingSoon /></Lazy> },
       { path: 'double-pendulum', element: <Lazy><DoublePendulum /></Lazy> },

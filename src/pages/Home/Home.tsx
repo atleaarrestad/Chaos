@@ -30,15 +30,6 @@ const EXPLORATIONS: Exploration[] = [
     color: 'var(--col-mandelbrot)',
   },
   {
-    path: '/julia',
-    title: 'Julia Sets',
-    category: 'Fractal',
-    description:
-      'A family of fractals parameterized by a complex constant c. Vary c and the structure shifts between connected islands and scattered dust.',
-    symbol: 'ℂ',
-    color: 'var(--col-julia)',
-  },
-  {
     path: '/cardioid',
     title: 'Cardioid',
     category: 'Curve',
