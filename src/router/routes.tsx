@@ -5,8 +5,9 @@ import Layout from '@/components/Layout/Layout';
 const Home        = lazy(() => import('@/pages/Home/Home'));
 const ComingSoon  = lazy(() => import('@/pages/ComingSoon/ComingSoon'));
 const ControlsTest = lazy(() => import('@/pages/ControlsTest/ControlsTest'));
-const Lorenz      = lazy(() => import('@/pages/Lorenz/Lorenz'));
-const Mandelbrot  = lazy(() => import('@/pages/Mandelbrot/Mandelbrot'));
+const Lorenz          = lazy(() => import('@/pages/Lorenz/Lorenz'));
+const Mandelbrot      = lazy(() => import('@/pages/Mandelbrot/Mandelbrot'));
+const DoublePendulum  = lazy(() => import('@/pages/DoublePendulum/DoublePendulum'));
 
 function Lazy({ children }: { children: ReactNode }) {
   return (
@@ -27,7 +28,7 @@ export const router = createBrowserRouter([
       { path: 'julia', element: <Lazy><ComingSoon /></Lazy> },
       { path: 'cardioid', element: <Lazy><ComingSoon /></Lazy> },
       { path: 'bifurcation', element: <Lazy><ComingSoon /></Lazy> },
-      { path: 'double-pendulum', element: <Lazy><ComingSoon /></Lazy> },
+      { path: 'double-pendulum', element: <Lazy><DoublePendulum /></Lazy> },
       { path: 'controls-test', element: <Lazy><ControlsTest /></Lazy> },
     ],
   },
