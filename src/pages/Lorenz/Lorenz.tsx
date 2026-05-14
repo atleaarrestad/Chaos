@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { Info } from 'lucide-react';
 import {
   Slider, Toggle, SelectControl,
   ControlPanel, ControlGroup,
@@ -999,7 +1000,7 @@ export default function Lorenz() {
                   Return map: z<sub>n+1</sub> vs z<sub>n</sub>
                 </span>
                 <div className={styles.infoBtnWrapper}>
-                  <button className={styles.infoBtn} type="button" aria-label="About return map">i</button>
+                  <button className={styles.infoBtn} type="button" aria-label="About return map"><Info size={20} strokeWidth={1.5} /></button>
                   <div className={styles.infoTooltip}>
                     Each point (z<sub>n</sub>,&thinsp;z<sub>n+1</sub>) plots successive local z&#8209;maxima
                     against each other. The tent&#8209;map shape confirms deterministic chaos:
@@ -1022,7 +1023,7 @@ export default function Lorenz() {
                   Poincaré: {sectionAxis} = {poincareZ}
                 </span>
                 <div className={styles.infoBtnWrapper}>
-                  <button className={styles.infoBtn} type="button" aria-label="About Poincaré section">i</button>
+                  <button className={styles.infoBtn} type="button" aria-label="About Poincaré section"><Info size={20} strokeWidth={1.5} /></button>
                   <div className={styles.infoTooltip}>
                     Records each crossing of the {sectionAxis}&thinsp;=&thinsp;{poincareZ} plane.
                     The crossing points form a fractal curve, revealing the attractor&rsquo;s
