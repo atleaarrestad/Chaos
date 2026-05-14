@@ -11,7 +11,7 @@ type ColorScheme = 'cardioid' | 'rainbow' | 'plasma' | 'mono';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const BG  = '#070710';
+const BG  = '#0b0b18';
 const TAU = Math.PI * 2;
 
 const PRESETS = [
@@ -46,7 +46,6 @@ function lineColor(scheme: ColorScheme, t: number, alpha: number): string {
 
 export default function Cardioid() {
   const canvasRef  = useRef<HTMLCanvasElement>(null);
-  const sidebarRef = useRef<HTMLDivElement>(null);
   const rafRef     = useRef<number>(0);
   const tPrevRef   = useRef<number>(0);
   const kRef       = useRef<number>(2);        // live animated factor
@@ -63,6 +62,7 @@ export default function Cardioid() {
   const [lineWidth,   setLineWidth]   = useState(1.0);
   const [showCircle,  setShowCircle]  = useState(true);
   const [showDots,    setShowDots]    = useState(false);
+  const [activePreset, setActivePreset] = useState<number | null>(0);
 
   // Mirror state to ref so animation loop always reads fresh values
   const pRef = useRef({
@@ -77,6 +77,7 @@ export default function Cardioid() {
   const handleFactorChange = useCallback((v: number) => {
     setFactor(v);
     kRef.current = v;
+    setActivePreset(null);
   }, []);
 
   // ─── Draw loop ────────────────────────────────────────────────────────────
@@ -94,7 +95,7 @@ export default function Cardioid() {
 
     if (animate && dt > 0) {
       kRef.current += animSpeed * dt;
-      if (kRef.current > 100) kRef.current = 2;
+      if (kRef.current > 100) kRef.current = 0.5;
     }
     const k = kRef.current;
 
@@ -139,37 +140,26 @@ export default function Cardioid() {
       ctx.strokeStyle = lineColor('mono', 0, lineOpacity);
       ctx.beginPath();
       for (let i = 0; i < numPoints; i++) {
-        const a1 = (i       / numPoints) * TAU - Math.PI / 2;
-        const a2 = (i * k   / numPoints) * TAU - Math.PI / 2;
+        const a1 = (i     / numPoints) * TAU - Math.PI / 2;
+        const a2 = (i * k / numPoints) * TAU - Math.PI / 2;
         ctx.moveTo(cx + R * Math.cos(a1), cy + R * Math.sin(a1));
         ctx.lineTo(cx + R * Math.cos(a2), cy + R * Math.sin(a2));
       }
       ctx.stroke();
-    } else if (colorScheme === 'cardioid') {
-      // Group into hue buckets to reduce strokeStyle switches
+    } else {
+      // Group into hue buckets to reduce strokeStyle switches (all color schemes)
       const BUCKETS = 30;
       for (let b = 0; b < BUCKETS; b++) {
-        ctx.strokeStyle = lineColor('cardioid', b / BUCKETS, lineOpacity);
+        ctx.strokeStyle = lineColor(colorScheme, b / BUCKETS, lineOpacity);
         ctx.beginPath();
         const lo = Math.round((b / BUCKETS) * numPoints);
         const hi = Math.round(((b + 1) / BUCKETS) * numPoints);
         for (let i = lo; i < hi; i++) {
-          const a1 = (i       / numPoints) * TAU - Math.PI / 2;
-          const a2 = (i * k   / numPoints) * TAU - Math.PI / 2;
+          const a1 = (i     / numPoints) * TAU - Math.PI / 2;
+          const a2 = (i * k / numPoints) * TAU - Math.PI / 2;
           ctx.moveTo(cx + R * Math.cos(a1), cy + R * Math.sin(a1));
           ctx.lineTo(cx + R * Math.cos(a2), cy + R * Math.sin(a2));
         }
-        ctx.stroke();
-      }
-    } else {
-      // Per-line color (rainbow, plasma)
-      for (let i = 0; i < numPoints; i++) {
-        const a1 = (i       / numPoints) * TAU - Math.PI / 2;
-        const a2 = (i * k   / numPoints) * TAU - Math.PI / 2;
-        ctx.strokeStyle = lineColor(colorScheme, i / numPoints, lineOpacity);
-        ctx.beginPath();
-        ctx.moveTo(cx + R * Math.cos(a1), cy + R * Math.sin(a1));
-        ctx.lineTo(cx + R * Math.cos(a2), cy + R * Math.sin(a2));
         ctx.stroke();
       }
     }
@@ -213,6 +203,7 @@ export default function Cardioid() {
     setLineWidth(1.0);
     setShowCircle(true);
     setShowDots(false);
+    setActivePreset(0);
   }, []);
 
   // ─── Render ───────────────────────────────────────────────────────────────
@@ -222,18 +213,18 @@ export default function Cardioid() {
       <canvas ref={canvasRef} className={styles.canvas} />
 
       {/* ─── Right-hand config sidebar ──────────────────────────────────── */}
-      <div ref={sidebarRef} className={styles.sidebar}>
+      <div className={styles.sidebar}>
         <div className={styles.sidebarPanels}>
           <ControlPanel title="Presets">
             <ControlGroup>
               <div className={styles.presetGrid}>
-                {PRESETS.map(p => (
+                {PRESETS.map((p, idx) => (
                   <button
                     key={p.label}
-                    className={styles.presetBtn}
+                    className={`${styles.presetBtn}${activePreset === idx ? ` ${styles.presetBtnActive}` : ''}`}
                     type="button"
                     title={p.desc}
-                    onClick={() => { kRef.current = p.k; setFactor(p.k); setAnimate(false); }}
+                    onClick={() => { kRef.current = p.k; setFactor(p.k); setAnimate(false); setActivePreset(idx); }}
                   >
                     {p.label}
                   </button>
@@ -333,7 +324,9 @@ export default function Cardioid() {
           </span>
         </div>
         <div className={styles.hudRight}>
-          <span className={styles.hudHint}>times-table visualization</span>
+          <span className={styles.hudHint}>
+            {activePreset !== null ? PRESETS[activePreset].desc : 'times-table visualization'}
+          </span>
         </div>
       </div>
     </div>

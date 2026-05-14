@@ -85,6 +85,12 @@
   color: var(--col-cardioid);
 }
 
+.presetBtnActive {
+  background: rgba(251, 146, 60, 0.15);
+  border-color: var(--col-cardioid);
+  color: var(--col-cardioid);
+}
+
 /* ─── Reset button ───────────────────────────────────────────────────────── */
 
 .resetBtn {
