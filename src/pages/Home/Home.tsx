@@ -65,6 +65,15 @@ const EXPLORATIONS: Exploration[] = [
     symbol: 'g',
     color: 'var(--col-pendulum)',
   },
+  {
+    path: '/attractors',
+    title: 'Strange Attractors',
+    category: 'Gallery',
+    description:
+      'Rössler, Halvorsen, Thomas, Aizawa, Dadras — five distinct strange attractors, each born from three simple equations. Select, explore, and tune their parameters.',
+    symbol: '∿',
+    color: 'var(--col-attractors)',
+  },
 ];
 
 export default function Home() {
