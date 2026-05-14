@@ -732,7 +732,10 @@ export default function DoublePendulum() {
               description="Show reference pendulum geometry" />
             <Toggle label="Phase portrait" value={showPhase} onChange={setShowPhase}
               description="Show θ₁ vs ω₁ phase space" />
-            <Toggle label="Chaos ensemble" value={showEnsemble} onChange={setShowEnsemble}
+            <Toggle label="Chaos ensemble" value={showEnsemble} onChange={v => {
+                setShowEnsemble(v);
+                if (v) resetSimulation();
+              }}
               description={gpuAvailable
                 ? 'Show 16 384 pendulums with slightly different starting angles to visualise how chaos causes them to diverge'
                 : 'WebGL2 required – not available in this browser'} />
