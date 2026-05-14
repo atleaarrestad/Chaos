@@ -89,6 +89,7 @@ function fmtZoom(zoom: number): string {
 export default function Mandelbrot() {
   const canvasRef      = useRef<HTMLCanvasElement>(null);
   const glCanvasRef    = useRef<HTMLCanvasElement>(null);
+  const snapshotRef    = useRef<HTMLCanvasElement>(null);
   const backRef        = useRef<HTMLCanvasElement | null>(null);
   const view           = useRef<View>({ ...INITIAL });
   const workersRef     = useRef<Worker[]>([]);
@@ -270,6 +271,15 @@ export default function Mandelbrot() {
     };
     try {
       renderer.render(params);
+      // Keep snapshot in sync so context loss can be covered seamlessly.
+      const snap = snapshotRef.current;
+      if (snap) {
+        if (snap.width !== glCanvas.width || snap.height !== glCanvas.height) {
+          snap.width  = glCanvas.width;
+          snap.height = glCanvas.height;
+        }
+        snap.getContext('2d')?.drawImage(glCanvas, 0, 0);
+      }
     } catch (e) {
       console.error('[Mandelbrot] GPU render error, attempting recovery:', e);
       // Recreate the renderer — the most likely cause is a lost WebGL context.
@@ -351,11 +361,16 @@ export default function Mandelbrot() {
       const onContextLost = (e: Event) => {
         e.preventDefault(); // allow restoration
         webglRef.current = null;
+        if (snapshotRef.current) snapshotRef.current.style.display = 'block';
       };
       const onContextRestored = () => {
         try {
           webglRef.current = createWebGLRenderer(glCanvas);
           renderGPU(false);
+          // Hide snapshot on the frame after the new render is presented.
+          requestAnimationFrame(() => requestAnimationFrame(() => {
+            if (snapshotRef.current) snapshotRef.current.style.display = 'none';
+          }));
         } catch (e) {
           console.warn('WebGL context restore failed:', e);
         }
@@ -396,10 +411,16 @@ export default function Mandelbrot() {
       }
       const glCanvas = glCanvasRef.current;
       if (glCanvas && (glCanvas.width !== w || glCanvas.height !== h)) {
+        if (snapshotRef.current) snapshotRef.current.style.display = 'block';
         glCanvas.width  = w;
         glCanvas.height = h;
       }
       triggerRender();
+      if (snapshotRef.current?.style.display === 'block') {
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          if (snapshotRef.current) snapshotRef.current.style.display = 'none';
+        }));
+      }
     });
     ro.observe(canvas);
     return () => ro.disconnect();
@@ -646,6 +667,9 @@ export default function Mandelbrot() {
       {/* GPU canvas sits behind; CPU canvas sits in front and always captures mouse events */}
       <canvas ref={glCanvasRef} className={styles.glCanvas}
         style={{ opacity: useGPU ? 1 : 0 }} />
+      {/* Snapshot canvas: covers glCanvas during context loss/resize to prevent black flash */}
+      <canvas ref={snapshotRef} className={styles.glCanvas}
+        style={{ display: 'none', pointerEvents: 'none' }} />
       <canvas ref={canvasRef} className={styles.canvas}
         style={{ opacity: useGPU ? 0 : 1 }} />
 
