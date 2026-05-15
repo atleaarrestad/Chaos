@@ -335,6 +335,7 @@ export default function Conway() {
   const [speed,        setSpeed]        = useState(10);
   const [ageColor,     setAgeColor]     = useState(true);
   const [showGraph,    setShowGraph]    = useState(true);
+  const [showInfo,     setShowInfo]     = useState(false);
   const [generation,   setGeneration]   = useState(0);
   const [population,   setPopulation]   = useState(0);
   const [activePreset, setActivePreset] = useState<number>(-1);
@@ -808,8 +809,54 @@ export default function Conway() {
         </div>
         <div className={styles.hudRight}>
           <span className={styles.hudHint}>right-drag to pan · scroll to zoom · click/drag to draw</span>
+          <button className={styles.infoBtn} onClick={() => setShowInfo(true)} title="About Conway's Game of Life">ⓘ</button>
         </div>
       </div>
+
+      {/* Info dialog */}
+      {showInfo && (
+        <div className={styles.infoOverlay} onClick={() => setShowInfo(false)}>
+          <div className={styles.infoDialog} onClick={e => e.stopPropagation()}>
+            <div className={styles.infoHeader}>
+              <span className={styles.infoTitle}>Conway's Game of Life</span>
+              <button className={styles.infoCloseBtn} onClick={() => setShowInfo(false)}>×</button>
+            </div>
+            <div className={styles.infoBody}>
+              <p>
+                The Game of Life is a <strong>cellular automaton</strong> devised by mathematician
+                John Horton Conway in 1970. It is a zero-player game: the evolution of the grid is
+                determined entirely by its initial state, with no further input required.
+              </p>
+
+              <h3>The four rules</h3>
+              <p>Each cell is either <strong>alive</strong> or <strong>dead</strong>. Every generation,
+              all cells update simultaneously according to these rules:</p>
+              <ol>
+                <li><strong>Underpopulation:</strong> a live cell with fewer than 2 live neighbours dies.</li>
+                <li><strong>Survival:</strong> a live cell with 2 or 3 live neighbours survives.</li>
+                <li><strong>Overpopulation:</strong> a live cell with more than 3 live neighbours dies.</li>
+                <li><strong>Reproduction:</strong> a dead cell with exactly 3 live neighbours becomes alive.</li>
+              </ol>
+
+              <h3>Controls</h3>
+              <ul>
+                <li><strong>Click / drag:</strong> draw or erase cells</li>
+                <li><strong>Right-drag:</strong> pan the view</li>
+                <li><strong>Scroll:</strong> zoom in and out</li>
+              </ul>
+
+              <h3>Age colours</h3>
+              <p>When age colouring is enabled, cells are shaded by how many generations they have survived:</p>
+              <ul>
+                <li><span style={{ color: '#f0fdf9' }}>■</span> <strong>Newborn:</strong> just came alive (1 gen)</li>
+                <li><span style={{ color: '#a7f3d0' }}>■</span> <strong>Young:</strong> 2–3 generations</li>
+                <li><span style={{ color: '#6ee7b7' }}>■</span> <strong>Mature:</strong> 4–9 generations</li>
+                <li><span style={{ color: '#34d399' }}>■</span> <strong>Old:</strong> 10+ generations</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
