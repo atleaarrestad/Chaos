@@ -1,22 +1,25 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Slider, ControlPanel, ControlGroup } from '@/components/Controls';
+import { Slider, Toggle, ControlPanel, ControlGroup } from '@/components/Controls';
 import styles from './Conway.module.css';
 
 // ─── Grid constants ───────────────────────────────────────────────────────────
 
 const COLS         = 300;
 const ROWS         = 200;
-const INIT_CELL_PX = 14;  // starting cell size in CSS pixels
+const INIT_CELL_PX = 14;
 const MIN_CELL_PX  = 3;
 const MAX_CELL_PX  = 64;
-const PAN_THRESHOLD = 4;  // CSS px of movement before a drag becomes a pan
+const MAX_AGE      = 64;   // age caps here for color bucketing
+const SPARK_LEN    = 150;  // generations shown in the sparkline
 
-type Grid = Uint8Array;
+type Grid    = Uint8Array;
+type AgeGrid = Uint16Array;
 
 const cellIdx = (r: number, c: number) => r * COLS + c;
 const wrap    = (v: number, max: number) => ((v % max) + max) % max;
 
-const emptyGrid = (): Grid => new Uint8Array(COLS * ROWS);
+const emptyGrid    = (): Grid    => new Uint8Array(COLS * ROWS);
+const emptyAgeGrid = (): AgeGrid => new Uint16Array(COLS * ROWS);
 
 function randomGrid(density = 0.3): Grid {
   const g = new Uint8Array(COLS * ROWS);
@@ -24,8 +27,15 @@ function randomGrid(density = 0.3): Grid {
   return g;
 }
 
-function stepGrid(g: Grid): Grid {
-  const next = new Uint8Array(COLS * ROWS);
+function initialAgeGrid(g: Grid): AgeGrid {
+  const ages = new Uint16Array(COLS * ROWS);
+  for (let i = 0; i < g.length; i++) ages[i] = g[i] ? 1 : 0;
+  return ages;
+}
+
+function stepGrid(g: Grid, ages: AgeGrid): [Grid, AgeGrid] {
+  const next     = new Uint8Array(COLS * ROWS);
+  const nextAges = new Uint16Array(COLS * ROWS);
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
       let n = 0;
@@ -35,11 +45,13 @@ function stepGrid(g: Grid): Grid {
           n += g[cellIdx(wrap(r + dr, ROWS), wrap(c + dc, COLS))];
         }
       }
-      const v = g[cellIdx(r, c)];
-      next[cellIdx(r, c)] = v ? (n === 2 || n === 3 ? 1 : 0) : (n === 3 ? 1 : 0);
+      const i     = cellIdx(r, c);
+      const alive = g[i] ? (n === 2 || n === 3 ? 1 : 0) : (n === 3 ? 1 : 0);
+      next[i]     = alive;
+      nextAges[i] = alive ? Math.min(ages[i] + 1, MAX_AGE) : 0;
     }
   }
-  return next;
+  return [next, nextAges];
 }
 
 function countPop(g: Grid): number {
@@ -48,9 +60,9 @@ function countPop(g: Grid): number {
   return n;
 }
 
-function applyPattern(cells: [number, number][]): Grid {
+function applyPattern(cells: [number, number][]): [Grid, AgeGrid] {
   const grid = emptyGrid();
-  if (!cells.length) return grid;
+  if (!cells.length) return [grid, emptyAgeGrid()];
   const minR = Math.min(...cells.map(([r]) => r));
   const maxR = Math.max(...cells.map(([r]) => r));
   const minC = Math.min(...cells.map(([, c]) => c));
@@ -61,7 +73,7 @@ function applyPattern(cells: [number, number][]): Grid {
     const nr = r + offR, nc = c + offC;
     if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS) grid[cellIdx(nr, nc)] = 1;
   }
-  return grid;
+  return [grid, initialAgeGrid(grid)];
 }
 
 // ─── Preset patterns ──────────────────────────────────────────────────────────
@@ -167,10 +179,23 @@ const PRESETS: Preset[] = [
 
 // ─── Canvas rendering ─────────────────────────────────────────────────────────
 
-const ALIVE_COLOR      = '#6ee7b7';
-const DEAD_COLOR       = '#0c0c1e';
-const BG_COLOR         = '#070712';
-const GRID_LINE_COLOR  = 'rgba(255,255,255,0.06)';
+const DEAD_COLOR      = '#0c0c1e';
+const BG_COLOR        = '#070712';
+const GRID_LINE_COLOR = 'rgba(255,255,255,0.06)';
+
+// Age-based colour buckets (index = bucket):
+//   0 = newborn (age 1)  — near-white flash
+//   1 = young   (2–3)    — light green
+//   2 = mature  (4–9)    — standard Conway green
+//   3 = old     (10+)    — deeper green
+const AGE_COLORS = ['#f0fdf9', '#a7f3d0', '#6ee7b7', '#34d399'] as const;
+
+function ageBucket(age: number): 0 | 1 | 2 | 3 {
+  if (age <= 1) return 0;
+  if (age <= 3) return 1;
+  if (age <= 9) return 2;
+  return 3;
+}
 
 /**
  * Render the grid into the canvas using the current viewport.
@@ -180,10 +205,12 @@ const GRID_LINE_COLOR  = 'rgba(255,255,255,0.06)';
 function renderGrid(
   canvas: HTMLCanvasElement,
   grid: Grid,
+  ages: AgeGrid,
   viewX: number,
   viewY: number,
   cellSizeCss: number,
   showGrid: boolean,
+  useAgeColor: boolean,
 ) {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
@@ -222,19 +249,47 @@ function renderGrid(
     ctx.fill();
   }
 
-  // Batch alive cells into a single path fill
-  ctx.fillStyle = ALIVE_COLOR;
-  ctx.beginPath();
-  for (let r = startR; r <= endR; r++) {
-    for (let c = startC; c <= endC; c++) {
-      if (grid[cellIdx(wrap(r, ROWS), wrap(c, COLS))]) {
-        const x = Math.floor((c - viewX) * cs);
-        const y = Math.floor((r - viewY) * cs);
-        ctx.rect(x + gap, y + gap, Math.ceil(cs) - gap, Math.ceil(cs) - gap);
+  // Single pass: bucket alive cells by age, then draw each bucket with its colour
+  type XY = [number, number];
+  const cellW = Math.ceil(cs) - gap;
+
+  if (useAgeColor) {
+    const buckets: [XY[], XY[], XY[], XY[]] = [[], [], [], []];
+    for (let r = startR; r <= endR; r++) {
+      for (let c = startC; c <= endC; c++) {
+        const i = cellIdx(wrap(r, ROWS), wrap(c, COLS));
+        if (grid[i]) {
+          buckets[ageBucket(ages[i])].push([
+            Math.floor((c - viewX) * cs),
+            Math.floor((r - viewY) * cs),
+          ]);
+        }
       }
     }
+    for (let b = 0; b < 4; b++) {
+      if (!buckets[b].length) continue;
+      ctx.fillStyle = AGE_COLORS[b];
+      ctx.beginPath();
+      for (const [x, y] of buckets[b]) {
+        ctx.rect(x + gap, y + gap, cellW, cellW);
+      }
+      ctx.fill();
+    }
+  } else {
+    ctx.fillStyle = AGE_COLORS[2]; // flat standard green
+    ctx.beginPath();
+    for (let r = startR; r <= endR; r++) {
+      for (let c = startC; c <= endC; c++) {
+        const i = cellIdx(wrap(r, ROWS), wrap(c, COLS));
+        if (grid[i]) {
+          const x = Math.floor((c - viewX) * cs);
+          const y = Math.floor((r - viewY) * cs);
+          ctx.rect(x + gap, y + gap, cellW, cellW);
+        }
+      }
+    }
+    ctx.fill();
   }
-  ctx.fill();
 
   // Subtle grid lines when paused and zoomed in
   if (showGrid && cs >= 8) {
@@ -260,34 +315,43 @@ function renderGrid(
 export default function Conway() {
   const canvasRef      = useRef<HTMLCanvasElement>(null);
   const gridRef        = useRef<Grid>(emptyGrid());
+  const ageGridRef     = useRef<AgeGrid>(emptyAgeGrid());
+  const ageColorRef    = useRef(true);
   const genRef         = useRef(0);
   const playingRef     = useRef(false);
   const speedRef       = useRef(10);
+  const densityRef     = useRef(0.3);
   const lastStepRef    = useRef(0);
   const rafRef         = useRef(0);
   const pendingSizeRef = useRef<{ w: number; h: number } | null>(null);
+  const sparkBufRef    = useRef<number[]>([]);
 
   // Viewport — stored as refs so the RAF loop reads them without re-renders
   const viewRef     = useRef({ x: COLS / 2 - 30, y: ROWS / 2 - 20 });
   const cellSizeRef = useRef(INIT_CELL_PX); // CSS logical pixels
 
-  // Pointer drag state
+  // Pointer drag state: left-drag = paint, right/middle-drag = pan
   const dragRef = useRef<{
-    startClientX: number;
-    startClientY: number;
-    startCell: [number, number];
-    hasPanned: boolean;
+    isPan: boolean;
+    paintState: 0 | 1;
+    paintedCells: Set<number>;
   } | null>(null);
 
   const [playing,      setPlaying]      = useState(false);
   const [speed,        setSpeed]        = useState(10);
+  const [density,      setDensity]      = useState(0.3);
+  const [ageColor,     setAgeColor]     = useState(true);
+  const [showGraph,    setShowGraph]    = useState(true);
   const [generation,   setGeneration]   = useState(0);
   const [population,   setPopulation]   = useState(0);
   const [activePreset, setActivePreset] = useState<number>(-1);
+  const [sparkData,    setSparkData]    = useState<number[]>([]);
 
   // Sync state → refs
   useEffect(() => { playingRef.current = playing; }, [playing]);
   useEffect(() => { speedRef.current = speed; }, [speed]);
+  useEffect(() => { densityRef.current = density; }, [density]);
+  useEffect(() => { ageColorRef.current = ageColor; }, [ageColor]);
 
   // ─── RAF loop ─────────────────────────────────────────────────────────────────
 
@@ -311,10 +375,15 @@ export default function Conway() {
         const interval = 1000 / speedRef.current;
         if (ts - lastStepRef.current >= interval) {
           lastStepRef.current = ts;
-          gridRef.current = stepGrid(gridRef.current);
+          const [nextGrid, nextAges] = stepGrid(gridRef.current, ageGridRef.current);
+          gridRef.current    = nextGrid;
+          ageGridRef.current = nextAges;
           genRef.current += 1;
+          const pop = countPop(gridRef.current);
+          sparkBufRef.current = [...sparkBufRef.current.slice(-(SPARK_LEN - 1)), pop];
           setGeneration(genRef.current);
-          setPopulation(countPop(gridRef.current));
+          setPopulation(pop);
+          setSparkData([...sparkBufRef.current]);
         }
       }
 
@@ -322,10 +391,12 @@ export default function Conway() {
         renderGrid(
           canvasRef.current,
           gridRef.current,
+          ageGridRef.current,
           viewRef.current.x,
           viewRef.current.y,
           cellSizeRef.current,
           !playingRef.current,
+          ageColorRef.current,
         );
       }
 
@@ -394,7 +465,7 @@ export default function Conway() {
     return () => canvas.removeEventListener('wheel', onWheel);
   }, []);
 
-  // ─── Pointer interaction: drag to pan, click-release to toggle ────────────────
+  // ─── Pointer interaction: left-drag paints, right/middle-drag pans ──────────
 
   const getCellAt = useCallback((clientX: number, clientY: number): [number, number] => {
     const canvas = canvasRef.current!;
@@ -405,56 +476,61 @@ export default function Conway() {
   }, []);
 
   const onPointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (e.button !== 0) return;
-    dragRef.current = {
-      startClientX: e.clientX,
-      startClientY: e.clientY,
-      startCell: getCellAt(e.clientX, e.clientY),
-      hasPanned: false,
-    };
-    canvasRef.current!.style.cursor = 'grabbing';
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
+
+    if (e.button === 1 || e.button === 2) {
+      // Middle / right-click → pan
+      dragRef.current = { isPan: true, paintState: 0, paintedCells: new Set() };
+      canvasRef.current!.style.cursor = 'grabbing';
+      return;
+    }
+
+    if (e.button !== 0) return;
+
+    // Left-click → immediately toggle and enter paint mode
+    const [r, c] = getCellAt(e.clientX, e.clientY);
+    const idx        = cellIdx(r, c);
+    const newState: 0 | 1 = gridRef.current[idx] ? 0 : 1;
+    gridRef.current[idx]    = newState;
+    ageGridRef.current[idx] = newState; // 1 = just born, 0 = just died
+    dragRef.current = { isPan: false, paintState: newState, paintedCells: new Set([idx]) };
+    setActivePreset(-1);
+    setPopulation(countPop(gridRef.current));
   }, [getCellAt]);
 
   const onPointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
     const drag = dragRef.current;
     if (!drag) return;
 
-    const dist = Math.hypot(
-      e.clientX - drag.startClientX,
-      e.clientY - drag.startClientY,
-    );
-
-    if (!drag.hasPanned && dist > PAN_THRESHOLD) {
-      drag.hasPanned = true;
-    }
-
-    if (drag.hasPanned) {
-      // movementX/Y are CSS pixels — same space as cellSizeRef (CSS px)
+    if (drag.isPan) {
       viewRef.current.x -= e.movementX / cellSizeRef.current;
       viewRef.current.y -= e.movementY / cellSizeRef.current;
+      return;
     }
-  }, []);
 
-  const onPointerUp = useCallback(() => {
-    const drag = dragRef.current;
-    if (!drag) return;
-
-    if (!drag.hasPanned) {
-      // Short click with no panning: toggle the cell that was pressed
-      const [r, c] = drag.startCell;
-      gridRef.current[cellIdx(r, c)] ^= 1;
-      setActivePreset(-1);
+    // Paint: apply paintState to every new cell the pointer enters
+    const [r, c] = getCellAt(e.clientX, e.clientY);
+    const idx = cellIdx(r, c);
+    if (!drag.paintedCells.has(idx)) {
+      drag.paintedCells.add(idx);
+      gridRef.current[idx]    = drag.paintState;
+      ageGridRef.current[idx] = drag.paintState;
       setPopulation(countPop(gridRef.current));
     }
+  }, [getCellAt]);
 
+  const onPointerUp = useCallback(() => {
     dragRef.current = null;
-    if (canvasRef.current) canvasRef.current.style.cursor = 'grab';
+    if (canvasRef.current) canvasRef.current.style.cursor = 'crosshair';
   }, []);
 
   const onPointerCancel = useCallback(() => {
     dragRef.current = null;
-    if (canvasRef.current) canvasRef.current.style.cursor = 'grab';
+    if (canvasRef.current) canvasRef.current.style.cursor = 'crosshair';
+  }, []);
+
+  const onContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
   }, []);
 
   // ─── Actions ──────────────────────────────────────────────────────────────────
@@ -470,10 +546,14 @@ export default function Conway() {
   }, []);
 
   const applyPreset = useCallback((i: number) => {
-    gridRef.current = applyPattern(PRESETS[i].cells);
-    genRef.current = 0;
+    const [g, ages] = applyPattern(PRESETS[i].cells);
+    gridRef.current    = g;
+    ageGridRef.current = ages;
+    genRef.current     = 0;
+    sparkBufRef.current = [];
     setGeneration(0);
-    setPopulation(countPop(gridRef.current));
+    setPopulation(countPop(g));
+    setSparkData([]);
     setActivePreset(i);
     setPlaying(false);
     // Reset zoom and re-center
@@ -482,26 +562,38 @@ export default function Conway() {
   }, [centerView]);
 
   const handleStep = useCallback(() => {
-    gridRef.current = stepGrid(gridRef.current);
+    const [nextGrid, nextAges] = stepGrid(gridRef.current, ageGridRef.current);
+    gridRef.current    = nextGrid;
+    ageGridRef.current = nextAges;
     genRef.current += 1;
+    const pop = countPop(gridRef.current);
+    sparkBufRef.current = [...sparkBufRef.current.slice(-(SPARK_LEN - 1)), pop];
     setGeneration(genRef.current);
-    setPopulation(countPop(gridRef.current));
+    setPopulation(pop);
+    setSparkData([...sparkBufRef.current]);
   }, []);
 
   const handleRandom = useCallback(() => {
-    gridRef.current = randomGrid();
-    genRef.current = 0;
+    const g = randomGrid(densityRef.current);
+    gridRef.current    = g;
+    ageGridRef.current = initialAgeGrid(g);
+    genRef.current     = 0;
+    sparkBufRef.current = [];
     setGeneration(0);
-    setPopulation(countPop(gridRef.current));
+    setPopulation(countPop(g));
+    setSparkData([]);
     setActivePreset(-1);
     setPlaying(false);
   }, []);
 
   const handleClear = useCallback(() => {
-    gridRef.current = emptyGrid();
-    genRef.current = 0;
+    gridRef.current    = emptyGrid();
+    ageGridRef.current = emptyAgeGrid();
+    genRef.current     = 0;
+    sparkBufRef.current = [];
     setGeneration(0);
     setPopulation(0);
+    setSparkData([]);
     setActivePreset(-1);
     setPlaying(false);
   }, []);
@@ -517,6 +609,7 @@ export default function Conway() {
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
+        onContextMenu={onContextMenu}
       />
 
       {/* Sidebar */}
@@ -538,6 +631,52 @@ export default function Conway() {
                 min={1} max={30} step={1}
                 unit="fps"
                 onChange={setSpeed}
+              />
+            </ControlGroup>
+          </ControlPanel>
+
+          <ControlPanel title="Random">
+            <ControlGroup>
+              <Slider
+                label="Density"
+                value={Math.round(density * 100)}
+                min={5} max={95} step={5}
+                unit="%"
+                onChange={(v) => setDensity(v / 100)}
+              />
+            </ControlGroup>
+          </ControlPanel>
+
+          <ControlPanel title="Display">
+            <ControlGroup>
+              <Toggle
+                label="Age colouring"
+                value={ageColor}
+                onChange={setAgeColor}
+                description="Shade cells by how long they've been alive"
+              />
+              {ageColor && (
+                <div className={styles.ageLegend}>
+                  {(
+                    [
+                      ['#f0fdf9', 'Newborn', '1 gen'],
+                      ['#a7f3d0', 'Young',   '2–3'],
+                      ['#6ee7b7', 'Mature',  '4–9'],
+                      ['#34d399', 'Old',     '10+'],
+                    ] as const
+                  ).map(([color, label, range]) => (
+                    <div key={label} className={styles.ageLegendRow}>
+                      <span className={styles.ageSwatch} style={{ background: color }} />
+                      <span className={styles.ageLegendLabel}>{label}</span>
+                      <span className={styles.ageLegendRange}>{range}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <Toggle
+                label="Population graph"
+                value={showGraph}
+                onChange={setShowGraph}
               />
             </ControlGroup>
           </ControlPanel>
@@ -575,10 +714,125 @@ export default function Conway() {
               <button className={styles.actionBtn} onClick={handleClear}>
                 Clear
               </button>
+              <button className={styles.actionBtn} onClick={centerView}>
+                Center
+              </button>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Population graph panel */}
+      {showGraph && sparkData.length >= 2 && (() => {
+        const SVG_W = 240, SVG_H = 100;
+        const PL = 38, PR = 8, PT = 8, PB = 24;
+        const plotW = SVG_W - PL - PR;
+        const plotH = SVG_H - PT - PB;
+        const max    = Math.max(...sparkData, 1);
+        const startGen = Math.max(0, generation - sparkData.length + 1);
+        const fmtN = (n: number) =>
+          n >= 10000 ? `${(n / 1000).toFixed(0)}k`
+          : n >= 1000 ? `${(n / 1000).toFixed(1)}k`
+          : `${n}`;
+
+        const linePts = sparkData
+          .map((v, i) => {
+            const x = PL + (i / (sparkData.length - 1)) * plotW;
+            const y = PT + (1 - v / max) * plotH;
+            return `${x.toFixed(1)},${y.toFixed(1)}`;
+          })
+          .join(' ');
+
+        const fillPts = `${PL},${PT + plotH} ${linePts} ${(PL + plotW).toFixed(1)},${PT + plotH}`;
+
+        return (
+          <div className={styles.popPanel}>
+            <div className={styles.popPanelHeader}>
+              <span className={styles.popPanelTitle}>Population</span>
+              <button
+                className={styles.popCloseBtn}
+                onClick={() => setShowGraph(false)}
+                aria-label="Close graph"
+              >
+                ×
+              </button>
+            </div>
+            <div className={styles.popPlot}>
+              <svg
+                width={SVG_W} height={SVG_H}
+                viewBox={`0 0 ${SVG_W} ${SVG_H}`}
+                className={styles.popSvg}
+                aria-hidden="true"
+              >
+                {/* Axis lines */}
+                <line x1={PL} y1={PT} x2={PL} y2={PT + plotH}
+                  stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
+                <line x1={PL} y1={PT + plotH} x2={PL + plotW} y2={PT + plotH}
+                  stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
+
+                {/* Y ticks: 0, mid, max */}
+                {([0, 0.5, 1] as const).map((frac) => {
+                  const val = Math.round(max * frac);
+                  const y   = PT + (1 - frac) * plotH;
+                  return (
+                    <g key={frac}>
+                      <line x1={PL - 3} y1={y} x2={PL} y2={y}
+                        stroke="rgba(255,255,255,0.2)" strokeWidth="1" />
+                      <text x={PL - 5} y={y + 3.5} textAnchor="end"
+                        fill="rgba(255,255,255,0.4)" fontSize="8">
+                        {fmtN(val)}
+                      </text>
+                    </g>
+                  );
+                })}
+
+                {/* X tick labels: start gen + current gen */}
+                <text x={PL} y={PT + plotH + 13} textAnchor="middle"
+                  fill="rgba(255,255,255,0.35)" fontSize="8">
+                  {startGen.toLocaleString()}
+                </text>
+                <text x={PL + plotW} y={PT + plotH + 13} textAnchor="middle"
+                  fill="rgba(255,255,255,0.35)" fontSize="8">
+                  {generation.toLocaleString()}
+                </text>
+
+                {/* Axis labels */}
+                <text x={PL + plotW / 2} y={SVG_H - 1} textAnchor="middle"
+                  fill="rgba(255,255,255,0.25)" fontSize="7.5">
+                  generation →
+                </text>
+                <text
+                  x={8} y={PT + plotH / 2}
+                  textAnchor="middle"
+                  fill="rgba(255,255,255,0.25)"
+                  fontSize="7.5"
+                  transform={`rotate(-90, 8, ${PT + plotH / 2})`}
+                >
+                  ↑ pop
+                </text>
+
+                {/* Fill under the line */}
+                <polygon
+                  points={fillPts}
+                  fill="var(--col-conway)"
+                  opacity="0.08"
+                />
+
+                {/* Data line */}
+                <polyline
+                  points={linePts}
+                  fill="none"
+                  stroke="var(--col-conway)"
+                  strokeWidth="1.5"
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                  opacity="0.85"
+                />
+              </svg>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* HUD */}
       <div className={styles.hud}>
@@ -589,7 +843,7 @@ export default function Conway() {
           </span>
         </div>
         <div className={styles.hudRight}>
-          <span className={styles.hudHint}>scroll to zoom · drag to pan · click to draw</span>
+          <span className={styles.hudHint}>right-drag to pan · scroll to zoom · click/drag to draw</span>
         </div>
       </div>
     </div>
