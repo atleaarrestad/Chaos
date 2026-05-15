@@ -21,11 +21,6 @@ const wrap    = (v: number, max: number) => ((v % max) + max) % max;
 const emptyGrid    = (): Grid    => new Uint8Array(COLS * ROWS);
 const emptyAgeGrid = (): AgeGrid => new Uint16Array(COLS * ROWS);
 
-function randomGrid(density = 0.3): Grid {
-  const g = new Uint8Array(COLS * ROWS);
-  for (let i = 0; i < g.length; i++) g[i] = Math.random() < density ? 1 : 0;
-  return g;
-}
 
 function initialAgeGrid(g: Grid): AgeGrid {
   const ages = new Uint16Array(COLS * ROWS);
@@ -320,7 +315,6 @@ export default function Conway() {
   const genRef         = useRef(0);
   const playingRef     = useRef(false);
   const speedRef       = useRef(10);
-  const densityRef     = useRef(0.3);
   const lastStepRef    = useRef(0);
   const rafRef         = useRef(0);
   const pendingSizeRef = useRef<{ w: number; h: number } | null>(null);
@@ -339,7 +333,6 @@ export default function Conway() {
 
   const [playing,      setPlaying]      = useState(false);
   const [speed,        setSpeed]        = useState(10);
-  const [density,      setDensity]      = useState(0.3);
   const [ageColor,     setAgeColor]     = useState(true);
   const [showGraph,    setShowGraph]    = useState(true);
   const [generation,   setGeneration]   = useState(0);
@@ -350,7 +343,6 @@ export default function Conway() {
   // Sync state → refs
   useEffect(() => { playingRef.current = playing; }, [playing]);
   useEffect(() => { speedRef.current = speed; }, [speed]);
-  useEffect(() => { densityRef.current = density; }, [density]);
   useEffect(() => { ageColorRef.current = ageColor; }, [ageColor]);
 
   // ─── RAF loop ─────────────────────────────────────────────────────────────────
@@ -573,19 +565,6 @@ export default function Conway() {
     setSparkData([...sparkBufRef.current]);
   }, []);
 
-  const handleRandom = useCallback(() => {
-    const g = randomGrid(densityRef.current);
-    gridRef.current    = g;
-    ageGridRef.current = initialAgeGrid(g);
-    genRef.current     = 0;
-    sparkBufRef.current = [];
-    setGeneration(0);
-    setPopulation(countPop(g));
-    setSparkData([]);
-    setActivePreset(-1);
-    setPlaying(false);
-  }, []);
-
   const handleClear = useCallback(() => {
     gridRef.current    = emptyGrid();
     ageGridRef.current = emptyAgeGrid();
@@ -631,18 +610,6 @@ export default function Conway() {
                 min={1} max={30} step={1}
                 unit="fps"
                 onChange={setSpeed}
-              />
-            </ControlGroup>
-          </ControlPanel>
-
-          <ControlPanel title="Random">
-            <ControlGroup>
-              <Slider
-                label="Density"
-                value={Math.round(density * 100)}
-                min={5} max={95} step={5}
-                unit="%"
-                onChange={(v) => setDensity(v / 100)}
               />
             </ControlGroup>
           </ControlPanel>
@@ -707,9 +674,6 @@ export default function Conway() {
             <div className={styles.actionRow}>
               <button className={styles.actionBtn} onClick={handleStep} disabled={playing}>
                 Step
-              </button>
-              <button className={styles.actionBtn} onClick={handleRandom}>
-                Random
               </button>
               <button className={styles.actionBtn} onClick={handleClear}>
                 Clear
