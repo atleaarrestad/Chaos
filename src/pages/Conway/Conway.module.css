@@ -14,7 +14,7 @@
   height: 100%;
   display: block;
   user-select: none;
-  cursor: crosshair;
+  cursor: grab;
 }
 
 /* ─── Floating sidebar ───────────────────────────────────────────────────── */
@@ -55,8 +55,8 @@
 .playBtn {
   width: 100%;
   padding: var(--space-3) var(--space-4);
-  background: rgba(110, 231, 183, 0.12);
-  border: 1px solid rgba(110, 231, 183, 0.3);
+  background: var(--bg-surface);
+  border: 1px solid rgba(110, 231, 183, 0.35);
   border-radius: var(--radius-lg);
   color: var(--col-conway);
   font-size: var(--text-base);
@@ -68,17 +68,16 @@
     box-shadow var(--ease-fast);
   text-align: center;
   flex-shrink: 0;
-  /* Solid panel so it doesn't bleed through the canvas */
   box-shadow: var(--shadow-md);
 }
 
 .playBtn:hover {
-  background: rgba(110, 231, 183, 0.2);
+  background: color-mix(in srgb, var(--bg-surface) 80%, #6ee7b7 20%);
   border-color: var(--col-conway);
 }
 
 .playBtnActive {
-  background: rgba(110, 231, 183, 0.18);
+  background: color-mix(in srgb, var(--bg-surface) 75%, #6ee7b7 25%);
   border-color: var(--col-conway);
   box-shadow: 0 0 16px rgba(110, 231, 183, 0.18), var(--shadow-md);
 }
