@@ -33,6 +33,7 @@
   --col-pendulum:     #4ade80;   /* green   */
   --col-koch:         #93c5fd;   /* blue    */
   --col-attractors:   #f59e0b;   /* amber   */
+  --col-conway:       #6ee7b7;   /* emerald */
 
   /* ─── Typography: Families ───────────────────────────────────────── */
   --font-sans: system-ui, 'Segoe UI', Roboto, sans-serif;

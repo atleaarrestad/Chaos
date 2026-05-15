@@ -65,6 +65,15 @@ const EXPLORATIONS: Exploration[] = [
     symbol: 'g',
     color: 'var(--col-pendulum)',
   },
+  {
+    path: '/conway',
+    title: "Conway's Game of Life",
+    category: 'Cellular Automaton',
+    description:
+      'Zero-player game on an infinite grid. Four simple rules applied to cells — alive or dead — produce emergent complexity: oscillators, spaceships, and unbounded growth.',
+    symbol: '⬛',
+    color: 'var(--col-conway)',
+  },
 ];
 
 export default function Home() {

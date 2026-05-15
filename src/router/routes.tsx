@@ -10,6 +10,7 @@ const DoublePendulum  = lazy(() => import('@/pages/DoublePendulum/DoublePendulum
 const Cardioid        = lazy(() => import('@/pages/Cardioid/Cardioid'));
 const Bifurcation     = lazy(() => import('@/pages/Bifurcation/Bifurcation'));
 const Koch            = lazy(() => import('@/pages/Koch/Koch'));
+const Conway          = lazy(() => import('@/pages/Conway/Conway'));
 
 function Lazy({ children }: { children: ReactNode }) {
   return (
@@ -31,6 +32,7 @@ export const router = createBrowserRouter([
       { path: 'bifurcation', element: <Lazy><Bifurcation /></Lazy> },
       { path: 'double-pendulum', element: <Lazy><DoublePendulum /></Lazy> },
       { path: 'koch', element: <Lazy><Koch /></Lazy> },
+      { path: 'conway', element: <Lazy><Conway /></Lazy> },
       { path: 'controls-test', element: <Lazy><ControlsTest /></Lazy> },
     ],
   },
