@@ -432,16 +432,19 @@ export default function Conway() {
 
         {/* Action buttons */}
         <div className={styles.sidebarActions}>
-          <div className={styles.actionRow}>
-            <button className={styles.actionBtn} onClick={handleStep} disabled={playing}>
-              Step
-            </button>
-            <button className={styles.actionBtn} onClick={handleRandom}>
-              Random
-            </button>
-            <button className={styles.actionBtn} onClick={handleClear}>
-              Clear
-            </button>
+          <div className={styles.actionPanel}>
+            <span className={styles.actionPanelLabel}>Actions</span>
+            <div className={styles.actionRow}>
+              <button className={styles.actionBtn} onClick={handleStep} disabled={playing}>
+                Step
+              </button>
+              <button className={styles.actionBtn} onClick={handleRandom}>
+                Random
+              </button>
+              <button className={styles.actionBtn} onClick={handleClear}>
+                Clear
+              </button>
+            </div>
           </div>
         </div>
       </div>
