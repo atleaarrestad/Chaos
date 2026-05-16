@@ -41,12 +41,6 @@ const NAV: NavSection[] = [
       { path: '/conway', label: "Game of Life", symbol: '⬛' },
     ],
   },
-  {
-    section: 'Development',
-    items: [
-      { path: '/controls-test', label: 'Controls Test', symbol: '⚙' },
-    ],
-  },
 ];
 
 export default function Sidebar() {
