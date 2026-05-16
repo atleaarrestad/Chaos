@@ -11,8 +11,9 @@ const Cardioid        = lazy(() => import('@/pages/Cardioid/Cardioid'));
 const Bifurcation     = lazy(() => import('@/pages/Bifurcation/Bifurcation'));
 const Koch            = lazy(() => import('@/pages/Koch/Koch'));
 const CellularAutomata = lazy(() => import('@/pages/CellularAutomata/CellularAutomata'));
-const ThreeBody       = lazy(() => import('@/pages/ThreeBody/ThreeBody'));
-const NotFound        = lazy(() => import('@/pages/NotFound/NotFound'));
+const ThreeBody           = lazy(() => import('@/pages/ThreeBody/ThreeBody'));
+const ReactionDiffusion   = lazy(() => import('@/pages/ReactionDiffusion/ReactionDiffusion'));
+const NotFound            = lazy(() => import('@/pages/NotFound/NotFound'));
 
 const spinnerStyle: React.CSSProperties = {
   display: 'flex',
@@ -53,6 +54,7 @@ export const router = createBrowserRouter([
       { path: 'conway', element: <Navigate to="/cellular-automata" replace /> },
       { path: 'cellular-automata', element: <Lazy><CellularAutomata /></Lazy> },
       { path: 'three-body', element: <Lazy><ThreeBody /></Lazy> },
+      { path: 'reaction-diffusion', element: <Lazy><ReactionDiffusion /></Lazy> },
       { path: '*', element: <Lazy><NotFound /></Lazy> },
     ],
   },

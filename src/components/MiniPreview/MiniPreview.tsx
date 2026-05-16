@@ -10,7 +10,8 @@ export type PreviewType =
   | 'pendulum'
   | 'conway'
   | 'cellular'
-  | 'threebody';
+  | 'threebody'
+  | 'reaction';
 
 type Renderer = (canvas: HTMLCanvasElement) => () => void;
 
@@ -561,6 +562,106 @@ const threebodyRenderer: Renderer = (canvas) => {
   return () => cancelAnimationFrame(raf);
 };
 
+// ─── Reaction-Diffusion (Gray-Scott, animated) ───────────────────────────────
+
+const reactionRenderer: Renderer = (canvas) => {
+  const dpr = window.devicePixelRatio || 1;
+  const W = (canvas.width  = Math.round(canvas.offsetWidth  * dpr));
+  const H = (canvas.height = Math.round(canvas.offsetHeight * dpr));
+  const ctx = canvas.getContext('2d')!;
+
+  const SW = 96, SH = 96;
+  const N  = SW * SH;
+
+  const u  = new Float32Array(N).fill(1);
+  const v  = new Float32Array(N);
+  const nu = new Float32Array(N);
+  const nv = new Float32Array(N);
+  const imgData = new ImageData(SW, SH);
+  const off = new OffscreenCanvas(SW, SH);
+  const offCtx = off.getContext('2d')!;
+
+  // Spots preset
+  const F = 0.035, K = 0.065, DU = 0.2097, DV = 0.105;
+
+  // Seed a few blobs
+  const seeds = [[48,48,7],[20,70,5],[75,25,5],[25,25,4],[70,70,4]];
+  for (const [cx, cy, r] of seeds) {
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (dx*dx + dy*dy > r*r) continue;
+        const x = ((cx+dx)%SW+SW)%SW;
+        const y = ((cy+dy)%SH+SH)%SH;
+        const i = y*SW+x;
+        u[i] = 0.5; v[i] = 0.25;
+      }
+    }
+  }
+
+  function step() {
+    for (let y = 0; y < SH; y++) {
+      const yW  = y * SW;
+      const ynW = (y === 0 ? SH-1 : y-1) * SW;
+      const ysW = (y === SH-1 ? 0 : y+1) * SW;
+      for (let x = 0; x < SW; x++) {
+        const i  = yW + x;
+        const xL = x === 0    ? SW-1 : x-1;
+        const xR = x === SW-1 ? 0    : x+1;
+        const ui = u[i], vi = v[i];
+        const lapU = u[yW+xL] + u[yW+xR] + u[ynW+x] + u[ysW+x] - 4*ui;
+        const lapV = v[yW+xL] + v[yW+xR] + v[ynW+x] + v[ysW+x] - 4*vi;
+        const uvv = ui * vi * vi;
+        let nu_ = ui + DU*lapU - uvv + F*(1-ui);
+        let nv_ = vi + DV*lapV + uvv - (F+K)*vi;
+        if (nu_ < 0) nu_ = 0; else if (nu_ > 1) nu_ = 1;
+        if (nv_ < 0) nv_ = 0; else if (nv_ > 1) nv_ = 1;
+        nu[i] = nu_; nv[i] = nv_;
+      }
+    }
+    u.set(nu); v.set(nv);
+  }
+
+  const { data } = imgData;
+  let raf: number, frame = 0;
+
+  function draw() {
+    for (let s = 0; s < 6; s++) step();
+
+    for (let i = 0; i < N; i++) {
+      const t = v[i];
+      const idx = i << 2;
+      data[idx]   = Math.round(3   + t * 20);
+      data[idx+1] = Math.round(13  + t * 195);
+      data[idx+2] = Math.round(13  + t * 178);
+      data[idx+3] = 255;
+    }
+    offCtx.putImageData(imgData, 0, 0);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(off, 0, 0, W, H);
+
+    frame++;
+    // After ~800 gens, re-seed a random blob to keep things evolving
+    if (frame % 133 === 0) {
+      const cx = 10 + Math.floor(Math.random() * (SW - 20));
+      const cy = 10 + Math.floor(Math.random() * (SH - 20));
+      for (let dy = -4; dy <= 4; dy++) {
+        for (let dx = -4; dx <= 4; dx++) {
+          if (dx*dx+dy*dy > 16) continue;
+          const x = ((cx+dx)%SW+SW)%SW;
+          const y = ((cy+dy)%SH+SH)%SH;
+          const i = y*SW+x;
+          u[i] = 0.5; v[i] = 0.25;
+        }
+      }
+    }
+
+    raf = requestAnimationFrame(draw);
+  }
+
+  raf = requestAnimationFrame(draw);
+  return () => cancelAnimationFrame(raf);
+};
+
 // ─── Registry ────────────────────────────────────────────────────────────────
 
 const RENDERERS: Record<PreviewType, Renderer> = {
@@ -573,6 +674,7 @@ const RENDERERS: Record<PreviewType, Renderer> = {
   conway:      conwayRenderer,
   cellular:    cellularRenderer,
   threebody:   threebodyRenderer,
+  reaction:    reactionRenderer,
 };
 
 // ─── Component ───────────────────────────────────────────────────────────────

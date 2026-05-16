@@ -71,7 +71,7 @@ const EXPLORATIONS: Exploration[] = [
     title: 'Cellular Automata',
     category: 'Cellular Automaton',
     description:
-      "Twelve rulesets — Conway's Life, Langton's Ant, elementary 1D rules, Brian's Brain, and 2D outer-totalistic automata. Simple local rules, endlessly varied emergent behavior.",
+      "Twelve rulesets - Conway's Life, Langton's Ant, elementary 1D rules, Brian's Brain, and 2D outer-totalistic automata. Simple local rules, endlessly varied emergent behavior.",
     previewType: 'cellular',
     color: 'var(--col-ca)',
   },
@@ -80,9 +80,18 @@ const EXPLORATIONS: Exploration[] = [
     title: 'Three Body Problem',
     category: 'N-Body',
     description:
-      'Three massive bodies attracting each other through gravity. While the two-body problem is solvable, the three-body problem is generically chaotic — tiny changes in initial conditions lead to wildly different outcomes.',
+      'Three massive bodies attracting each other through gravity. While the two-body problem is solvable, the three-body problem is generically chaotic - tiny changes in initial conditions lead to wildly different outcomes.',
     previewType: 'threebody',
     color: 'var(--col-three-body)',
+  },
+  {
+    path: '/reaction-diffusion',
+    title: 'Reaction Diffusion',
+    category: 'Turing Pattern',
+    description:
+      'Two chemicals diffusing and reacting via the Gray-Scott equations spontaneously break symmetry into spots, stripes, coral, and mazes - a mathematical model of animal markings and biological morphogenesis.',
+    previewType: 'reaction',
+    color: 'var(--col-reaction)',
   },
 ];
 

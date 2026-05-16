@@ -41,6 +41,12 @@ const NAV: NavSection[] = [
       { path: '/cellular-automata', label: 'Cellular Automata', symbol: '🔲' },
     ],
   },
+  {
+    section: 'Emergence',
+    items: [
+      { path: '/reaction-diffusion', label: 'Reaction Diffusion', symbol: '⬡' },
+    ],
+  },
 ];
 
 export default function Sidebar() {
