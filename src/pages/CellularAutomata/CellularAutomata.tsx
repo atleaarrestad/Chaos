@@ -431,12 +431,26 @@ const PRESETS_BY_RULESET: Record<string, Preset[]> = {
   ],
 
   seeds: [
-    { label: '3-cell row',  sub: 'Seed', cells: [[0,0],[0,1],[0,2]] },
-    { label: '5-cell row',  sub: 'Seed', cells: [[0,0],[0,1],[0,2],[0,3],[0,4]] },
-    { label: '2×2 block',   sub: 'Seed', cells: [[0,0],[0,1],[1,0],[1,1]] },
     {
-      label: 'Diamond', sub: 'Seed',
-      cells: [[0,2],[1,0],[1,4],[2,2]],
+      label: 'Two rows', sub: 'Wave interference',
+      cells: [
+        [0,0],[0,1],[0,2],[0,3],[0,4],[0,5],[0,6],[0,7],[0,8],[0,9],
+        [3,0],[3,1],[3,2],[3,3],[3,4],[3,5],[3,6],[3,7],[3,8],[3,9],
+      ],
+    },
+    { label: '5-cell row',  sub: 'Expanding wave', cells: [[0,0],[0,1],[0,2],[0,3],[0,4]] },
+    { label: '2×2 block',   sub: 'Symmetric burst', cells: [[0,0],[0,1],[1,0],[1,1]] },
+    {
+      label: 'Diamond ring', sub: 'Expanding wave',
+      cells: [
+        [0,3],
+        [1,2],[1,4],
+        [2,1],[2,5],
+        [3,0],[3,6],
+        [4,1],[4,5],
+        [5,2],[5,4],
+        [6,3],
+      ],
     },
     {
       label: 'Cross',   sub: 'Seed',
