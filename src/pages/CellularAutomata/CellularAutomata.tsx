@@ -5,8 +5,7 @@ import ExportDialog from '../../components/ExportDialog/ExportDialog';
 import { exportImage } from '../../lib/exportImage';
 import styles from './CellularAutomata.module.css';
 
-// ─── Constants ──────────────────────────────────────────────────────────────
-
+// Constants
 const COLS           = 300;
 const ROWS           = 200;
 const BG_HEX         = '#0c0c1e';
@@ -23,8 +22,7 @@ const MAX_CELL_PX    = 64;
 const MAX_AGE        = 64;
 const SPARK_LEN      = 150;
 
-// ─── Types ──────────────────────────────────────────────────────────────────
-
+// Types
 type SimType = '2d' | 'brain' | 'ant' | '1d';
 type Rgb     = [number, number, number];
 
@@ -33,6 +31,7 @@ interface RulesetDef {
   name: string;
   category: string;
   description: string;
+  rules: string[];
   notation?: string;
   simType: SimType;
   color: string;
@@ -60,15 +59,20 @@ interface SimState {
   offCtx: OffscreenCanvasRenderingContext2D;
 }
 
-// ─── Rulesets ────────────────────────────────────────────────────────────────
-
+// Rulesets
 const RULESETS = [
   {
     id: 'conway',
     name: "Conway's Life",
     category: '2D Automaton',
     description:
-      "The original zero-player game devised by John Conway in 1970. Four simple rules — underpopulation, survival, overpopulation, reproduction — produce oscillators, spaceships, and unbounded growth.",
+      "The original zero-player game devised by John Conway in 1970. Four simple rules (underpopulation, survival, overpopulation, reproduction) produce oscillators, spaceships, and unbounded growth.",
+    rules: [
+      'A live cell with fewer than 2 neighbors dies (underpopulation)',
+      'A live cell with 2 or 3 neighbors survives',
+      'A live cell with more than 3 neighbors dies (overpopulation)',
+      'A dead cell with exactly 3 live neighbors becomes alive (reproduction)',
+    ],
     simType: '2d',
     birth: [3],
     survive: [2, 3],
@@ -82,6 +86,12 @@ const RULESETS = [
     category: '2D Automaton',
     description:
       "Conway's rules plus birth at 6 neighbors. Contains a self-replicating pattern (the 'replicator') that spawns copies of itself.",
+    rules: [
+      'A live cell with fewer than 2 neighbors dies',
+      'A live cell with 2 or 3 neighbors survives',
+      'A live cell with more than 3 neighbors dies',
+      'A dead cell with 3 or 6 live neighbors becomes alive',
+    ],
     simType: '2d',
     birth: [3, 6],
     survive: [2, 3],
@@ -94,7 +104,12 @@ const RULESETS = [
     name: 'Day & Night',
     category: '2D Automaton',
     description:
-      'Symmetric rules — live and dead regions are interchangeable. Produces stable isolated islands with rich internal structure.',
+      'Symmetric rules: live and dead regions are interchangeable. Produces stable isolated islands with rich internal structure.',
+    rules: [
+      'Born with 3, 6, 7, or 8 live neighbors',
+      'Survives with 3, 4, 6, 7, or 8 live neighbors',
+      'Live and dead obey identical rules (symmetric)',
+    ],
     simType: '2d',
     birth: [3, 6, 7, 8],
     survive: [3, 4, 6, 7, 8],
@@ -108,6 +123,11 @@ const RULESETS = [
     category: '2D Automaton',
     description:
       'Cells are highly survivable and grow outward into winding corridors. Once a wall forms, it never dissolves.',
+    rules: [
+      'Born with exactly 3 live neighbors',
+      'Survives with 1, 2, 3, 4, or 5 live neighbors',
+      'Dies with 0 or 6+ live neighbors (walls never dissolve)',
+    ],
     simType: '2d',
     birth: [3],
     survive: [1, 2, 3, 4, 5],
@@ -120,7 +140,11 @@ const RULESETS = [
     name: 'Seeds',
     category: '2D Automaton',
     description:
-      'Nothing survives — but any dead cell with exactly 2 live neighbors springs to life. Produces explosive wave-like growth.',
+      'Nothing survives, but any dead cell with exactly 2 live neighbors springs to life. Produces explosive wave-like growth.',
+    rules: [
+      'Born with exactly 2 live neighbors',
+      'No cell ever survives to the next generation',
+    ],
     simType: '2d',
     birth: [2],
     survive: [],
@@ -135,6 +159,11 @@ const RULESETS = [
     category: '2D Automaton',
     description:
       'Odd-neighbor birth and survival rules cause every finite pattern to replicate itself, producing an infinite mosaic of copies.',
+    rules: [
+      'Born with 1, 3, 5, or 7 live neighbors',
+      'Survives with 1, 3, 5, or 7 live neighbors',
+      'Every finite pattern eventually replicates itself',
+    ],
     simType: '2d',
     birth: [1, 3, 5, 7],
     survive: [1, 3, 5, 7],
@@ -149,6 +178,11 @@ const RULESETS = [
     category: '3-State CA',
     description:
       'Cells cycle: dead → alive → dying → dead. Nearly every random initial condition produces gliders. A born cell needs exactly 2 alive neighbors.',
+    rules: [
+      'A dead cell with exactly 2 alive neighbors becomes alive',
+      'An alive cell becomes dying (refractory state)',
+      'A dying cell becomes dead',
+    ],
     simType: 'brain',
     color: '#60a5fa',
     notation: 'B2 / dying / dead',
@@ -160,6 +194,10 @@ const RULESETS = [
     category: 'Ant Automaton',
     description:
       "An ant traverses a grid: turn right on a white cell, turn left on black, then flip. From apparent chaos emerges a periodic 'highway' after ~10,000 steps.",
+    rules: [
+      'On a white cell: turn right 90°, flip to black, step forward',
+      'On a black cell: turn left 90°, flip to white, step forward',
+    ],
     simType: 'ant',
     antTurns: [1, -1],
     antStateColors: ['#0c0c1e', '#c084fc'],
@@ -171,6 +209,12 @@ const RULESETS = [
     category: 'Ant Automaton',
     description:
       '4-color Langton variant. Two right-turns then two left-turns produce intricate symmetric spirals and structured growth.',
+    rules: [
+      'Four cell states cycle: 0, 1, 2, 3',
+      'On state 0 or 1: turn right 90°',
+      'On state 2 or 3: turn left 90°',
+      'Cell advances to the next state on each visit',
+    ],
     simType: 'ant',
     antTurns: [1, 1, -1, -1],
     antStateColors: ['#0c0c1e', '#c084fc', '#818cf8', '#60a5fa'],
@@ -182,6 +226,11 @@ const RULESETS = [
     category: '1D Automaton',
     description:
       "Wolfram's famously chaotic 1D automaton. The center column passes all randomness tests and was used as Mathematica's built-in random number generator.",
+    rules: [
+      '111→0  110→0  101→0  100→1',
+      '011→1  010→1  001→1  000→0',
+      'New cell = XOR(left, center OR right)',
+    ],
     simType: '1d',
     rule: 30,
     color: '#f87171',
@@ -193,7 +242,12 @@ const RULESETS = [
     name: 'Rule 110',
     category: '1D Automaton',
     description:
-      'Proven Turing complete — capable of universal computation. Complex glider-like structures emerge, collide, and interact.',
+      'Proven Turing complete, capable of universal computation. Complex glider-like structures emerge, collide, and interact.',
+    rules: [
+      '111→0  110→1  101→1  100→0',
+      '011→1  010→1  001→1  000→0',
+      'Turing-complete: can simulate any computation',
+    ],
     simType: '1d',
     rule: 110,
     color: '#fb923c',
@@ -206,6 +260,11 @@ const RULESETS = [
     category: '1D Automaton',
     description:
       "Generates a perfect Sierpiński triangle from a single active cell. Equivalent to Pascal's triangle modulo 2.",
+    rules: [
+      '111→0  110→1  101→0  100→1',
+      '011→1  010→0  001→1  000→0',
+      'New cell = left XOR right (Pascal\'s triangle mod 2)',
+    ],
     simType: '1d',
     rule: 90,
     color: '#34d399',
@@ -227,8 +286,7 @@ const RULESET_GROUPS = Array.from(
   ([category, rulesets]) => ({ category, rulesets }),
 );
 
-// ─── Presets ──────────────────────────────────────────────────────────────────
-
+// Presets
 interface Preset { label: string; sub: string; cells: [number, number][]; }
 
 const PRESETS_BY_RULESET: Record<string, Preset[]> = {
@@ -361,8 +419,7 @@ const PRESETS_BY_RULESET: Record<string, Preset[]> = {
   ],
 };
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
+// Helpers
 const BG_RGB: Rgb = hexToRgb(BG_HEX);
 
 function wrap(value: number, max: number) {
@@ -391,10 +448,10 @@ function makeAgeColors(hexColor: string): [string, string, string, string] {
   const white: Rgb  = [248, 254, 252];
   const toRgb = ([r, g, b]: Rgb) => `rgb(${r},${g},${b})`;
   return [
-    toRgb(mixRgb(white, accent, 0.80)),   // newborn  — near-white
-    toRgb(mixRgb(white, accent, 0.45)),   // young    — lighter
-    hexColor,                               // mature   — full accent
-    toRgb(mixRgb(accent, BG_RGB, 0.60)),  // old      — darker
+    toRgb(mixRgb(white, accent, 0.80)),   // newborn : near-white
+    toRgb(mixRgb(white, accent, 0.45)),   // young   : lighter
+    hexColor,                               // mature  : full accent
+    toRgb(mixRgb(accent, BG_RGB, 0.60)),  // old     : darker
   ];
 }
 
@@ -411,8 +468,7 @@ function countPop(grid: Uint8Array): number {
   return n;
 }
 
-// ─── SimState ────────────────────────────────────────────────────────────────
-
+// SimState
 function createSimState(): SimState {
   const offscreen = new OffscreenCanvas(COLS, ROWS);
   const offCtx = offscreen.getContext('2d', { alpha: false })!;
@@ -438,8 +494,7 @@ function recreateOffscreen(sim: SimState) {
   sim.offCtx    = offCtx;
 }
 
-// ─── Init ────────────────────────────────────────────────────────────────────
-
+// Init
 function initRandom(density: number): Uint8Array {
   const grid = new Uint8Array(COLS * ROWS);
   for (let i = 0; i < grid.length; i++) grid[i] = Math.random() < density ? 1 : 0;
@@ -504,8 +559,7 @@ function buildFromPreset(cells: [number, number][]): Pick<SimState, 'grid' | 'ag
   return { grid, ageGrid };
 }
 
-// ─── Step ────────────────────────────────────────────────────────────────────
-
+// Step
 function step2D(
   grid: Uint8Array,
   ageGrid: Uint16Array,
@@ -574,8 +628,7 @@ function step1D(row: Uint8Array, rule: number): Uint8Array {
   return next;
 }
 
-// ─── Render ──────────────────────────────────────────────────────────────────
-
+// Render
 /** Viewport render for 2D / brain / ant rules */
 function renderViewport(
   canvas: HTMLCanvasElement,
@@ -726,8 +779,7 @@ function render1D(canvas: HTMLCanvasElement, sim: SimState, ruleset: RulesetDef)
   ctx.drawImage(sim.offscreen, 0, 0, canvas.width, canvas.height);
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
-
+// Component
 export default function CellularAutomata() {
   const containerRef   = useRef<HTMLDivElement>(null);
   const canvasRef      = useRef<HTMLCanvasElement>(null);
@@ -763,6 +815,7 @@ export default function CellularAutomata() {
   const [showGraph,    setShowGraph]    = useState(false);
   const [activePreset, setActivePreset] = useState(-1);
   const [showExport,   setShowExport]   = useState(false);
+  const [infoCollapsed, setInfoCollapsed] = useState(false);
 
   const activeRule    = RULESET_MAP.get(activeRuleId) ?? (RULESETS[0] as RulesetDef);
   const is1D          = activeRule.simType === '1d';
@@ -777,8 +830,7 @@ export default function CellularAutomata() {
 
   useEffect(() => { ageColorRef.current = ageColor; }, [ageColor]);
 
-  // ─── Draw ─────────────────────────────────────────────────────────────────
-
+  // Draw
   const drawFrame = useCallback(() => {
     const canvas  = canvasRef.current;
     const sim     = simRef.current;
@@ -797,8 +849,7 @@ export default function CellularAutomata() {
     }
   }, []);
 
-  // ─── Step ─────────────────────────────────────────────────────────────────
-
+  // Step
   const stepSimulation = useCallback((steps: number) => {
     const sim     = simRef.current;
     const ruleset = activeRuleRef.current;
@@ -831,8 +882,7 @@ export default function CellularAutomata() {
     }
   }, []);
 
-  // ─── RAF loop ─────────────────────────────────────────────────────────────
-
+  // RAF loop
   const stopLoop = useCallback(() => {
     if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = 0; }
   }, []);
@@ -851,8 +901,7 @@ export default function CellularAutomata() {
     rafRef.current = requestAnimationFrame(frame);
   }, [drawFrame, stepSimulation]);
 
-  // ─── Init helpers ─────────────────────────────────────────────────────────
-
+  // Init helpers
   const centerViewport = useCallback((ruleset: RulesetDef) => {
     const canvas = canvasRef.current;
     const w = canvas ? canvas.getBoundingClientRect().width  : 800;
@@ -879,8 +928,7 @@ export default function CellularAutomata() {
     if (wasRunning) startLoop();
   }, [drawFrame, startLoop, stopLoop, centerViewport]);
 
-  // ─── Handlers ─────────────────────────────────────────────────────────────
-
+  // Handlers
   const handleRulesetSelect = useCallback((ruleset: RulesetDef) => {
     const nextDelay = ruleset.defaultDelay ?? 0;
     delayRef.current = nextDelay;
@@ -939,16 +987,14 @@ export default function CellularAutomata() {
     };
   }, []);
 
-  // ─── Running effect ────────────────────────────────────────────────────────
-
+  // Running effect
   useEffect(() => {
     runningRef.current = running;
     if (running) startLoop();
     else { stopLoop(); drawFrame(); }
   }, [running, startLoop, stopLoop, drawFrame]);
 
-  // ─── Resize observer ──────────────────────────────────────────────────────
-
+  // Resize observer
   useEffect(() => {
     const container = containerRef.current;
     const canvas    = canvasRef.current;
@@ -981,16 +1027,14 @@ export default function CellularAutomata() {
     return () => obs.disconnect();
   }, [drawFrame]);
 
-  // ─── Bootstrap ────────────────────────────────────────────────────────────
-
+  // Bootstrap
   useEffect(() => {
     initSim(activeRuleRef.current, 'reset');
     return () => stopLoop();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ─── Wheel zoom ───────────────────────────────────────────────────────────
-
+  // Wheel zoom
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -1012,8 +1056,7 @@ export default function CellularAutomata() {
     return () => canvas.removeEventListener('wheel', onWheel);
   }, [drawFrame]);
 
-  // ─── Pointer: paint (left) / pan (right/middle/any for non-paintable) ─────
-
+  // Pointer: paint (left) / pan (right/middle/any for non-paintable)
   const getCellAt = useCallback((clientX: number, clientY: number): [number, number] => {
     const canvas = canvasRef.current!;
     const rect   = canvas.getBoundingClientRect();
@@ -1074,8 +1117,7 @@ export default function CellularAutomata() {
 
   const onContextMenu = useCallback((e: React.MouseEvent) => e.preventDefault(), []);
 
-  // ─── Keyboard shortcuts ───────────────────────────────────────────────────
-
+  // Keyboard shortcuts
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
@@ -1090,8 +1132,7 @@ export default function CellularAutomata() {
   const groupedRulesets = useMemo(() => RULESET_GROUPS, []);
   const ageColors       = useMemo(() => makeAgeColors(activeRule.color), [activeRule.color]);
 
-  // ─── JSX ──────────────────────────────────────────────────────────────────
-
+  // JSX
   return (
     <div
       ref={containerRef}
@@ -1109,20 +1150,37 @@ export default function CellularAutomata() {
         onContextMenu={onContextMenu}
       />
 
-      {/* ── Info overlay ── */}
+      {/* Info overlay */}
       <div className={styles.infoOverlay}>
-        <div className={styles.infoOverlayName}>
-          <span className={styles.infoOverlayDot} style={{ backgroundColor: activeRule.color }} />
-          {activeRule.name}
+        <div className={styles.infoOverlayHeader}>
+          <div className={styles.infoOverlayName}>
+            <span className={styles.infoOverlayDot} style={{ backgroundColor: activeRule.color }} />
+            {activeRule.name}
+          </div>
+          <button
+            className={styles.infoOverlayToggle}
+            onClick={() => setInfoCollapsed(v => !v)}
+            aria-label={infoCollapsed ? 'Expand' : 'Collapse'}
+          >
+            {infoCollapsed ? '▸' : '▾'}
+          </button>
         </div>
-        <div className={styles.infoOverlayMeta}>
-          <span className={styles.categoryBadge}>{activeRule.category}</span>
-          {activeRule.notation && <span className={styles.notationBadge}>{activeRule.notation}</span>}
-        </div>
-        <p className={styles.infoOverlayDesc}>{activeRule.description}</p>
+        {!infoCollapsed && (
+          <>
+            <div className={styles.infoOverlayMeta}>
+              <span className={styles.categoryBadge}>{activeRule.category}</span>
+              {activeRule.notation && <span className={styles.notationBadge}>{activeRule.notation}</span>}
+            </div>
+            <ul className={styles.infoOverlayRules}>
+              {activeRule.rules.map((rule, i) => (
+                <li key={i} className={styles.infoOverlayRule}>{rule}</li>
+              ))}
+            </ul>
+          </>
+        )}
       </div>
 
-      {/* ── Sidebar ── */}
+      {/* Sidebar */}
       <div className={styles.sidebar}>
         <div className={styles.sidebarPanels}>
 
@@ -1220,7 +1278,7 @@ export default function CellularAutomata() {
         </div>
       </div>
 
-      {/* ── Population graph ── */}
+      {/* Population graph */}
       {showPop && (
         <div className={styles.popPanel}>
           <div className={[styles.popPanelHeader, !showGraph ? styles.popPanelHeaderCollapsed : ''].join(' ')}>
@@ -1272,7 +1330,7 @@ export default function CellularAutomata() {
         </div>
       )}
 
-      {/* ── Export dialog ── */}
+      {/* Export dialog */}
       {showExport && (
         <ExportDialog
           onClose={() => setShowExport(false)}
@@ -1283,7 +1341,7 @@ export default function CellularAutomata() {
         />
       )}
 
-      {/* ── HUD ── */}
+      {/* HUD */}
       <div className={styles.hud}>
         <div className={styles.hudLeft}>
           <span className={styles.hudTitle} style={{ color: activeRule.color }}>{activeRule.name}</span>

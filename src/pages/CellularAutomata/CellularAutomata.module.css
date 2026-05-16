@@ -17,7 +17,7 @@
   display: block;
 }
 
-/* ─── Sidebar ───────────────────────────────────────────────────────────── */
+/* Sidebar */
 
 .sidebar {
   position: fixed;
@@ -52,7 +52,7 @@
   border-radius: var(--radius-full);
 }
 
-/* ─── Ruleset list ──────────────────────────────────────────────────────── */
+/* Ruleset list */
 
 .rulesetList {
   padding: var(--space-4) var(--space-5);
@@ -126,7 +126,7 @@
   letter-spacing: 0.03em;
 }
 
-/* ─── Info panel ────────────────────────────────────────────────────────── */
+/* Info panel */
 
 .infoPanel {
   padding: var(--space-4) var(--space-5);
@@ -173,13 +173,13 @@
   font-size: var(--text-sm);
 }
 
-/* ─── Info overlay (top-left canvas overlay) ────────────────────────────── */
+/* Info overlay (top-left canvas overlay) */
 
 .infoOverlay {
   position: absolute;
   top: var(--space-4);
   left: var(--space-4);
-  max-width: 260px;
+  max-width: 280px;
   padding: var(--space-3) var(--space-4);
   background: rgba(7, 7, 18, 0.82);
   backdrop-filter: blur(8px);
@@ -188,9 +188,29 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  pointer-events: none;
   z-index: 5;
 }
+
+.infoOverlayHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.infoOverlayToggle {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  padding: 0 var(--space-1);
+  line-height: 1;
+  flex-shrink: 0;
+  transition: color var(--ease-fast);
+}
+
+.infoOverlayToggle:hover { color: rgba(255, 255, 255, 0.75); }
 
 .infoOverlayName {
   display: flex;
@@ -214,14 +234,22 @@
   gap: var(--space-1);
 }
 
-.infoOverlayDesc {
+.infoOverlayRules {
   margin: 0;
-  font-size: 11px;
-  line-height: 1.6;
-  color: rgba(255, 255, 255, 0.48);
+  padding: 0 0 0 var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
 }
 
-/* ─── Age legend ────────────────────────────────────────────────────────── */
+.infoOverlayRule {
+  font-size: 11px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.52);
+  font-family: var(--font-sans);
+}
+
+/* Age legend */
 
 .ageLegend {
   display: flex;
@@ -258,7 +286,7 @@
   color: var(--text-subtle);
 }
 
-/* ─── Presets ───────────────────────────────────────────────────────────── */
+/* Presets */
 
 .presetGrid {
   display: grid;
@@ -303,7 +331,7 @@
   font-family: var(--font-mono);
 }
 
-/* ─── Sidebar actions ───────────────────────────────────────────────────── */
+/* Sidebar actions */
 
 .sidebarActions {
   flex-shrink: 0;
@@ -361,7 +389,7 @@
   cursor: default;
 }
 
-/* ─── Population graph ──────────────────────────────────────────────────── */
+/* Population graph */
 
 .popPanel {
   position: absolute;
@@ -423,7 +451,7 @@
 
 .popSvg { display: block; }
 
-/* ─── HUD ───────────────────────────────────────────────────────────────── */
+/* HUD */
 
 .hud {
   position: absolute;
