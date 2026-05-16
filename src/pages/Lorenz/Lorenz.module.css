@@ -303,7 +303,43 @@
   color: var(--col-lorenz);
 }
 
-/* ─── HUD overlay ────────────────────────────────────────────────────────── */
+/* ─── Velocity color legend ──────────────────────────────────────────────── */
+
+.velocityLegend {
+  position: absolute;
+  bottom: var(--space-6);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  pointer-events: none;
+  user-select: none;
+}
+
+.velocityBar {
+  width: clamp(160px, 28vw, 340px);
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    rgb(10,  20,  160),
+    rgb(10,  200, 220),
+    rgb(30,  180, 30),
+    rgb(210, 210, 20),
+    rgb(255, 140, 20),
+    rgb(255, 40,  20)
+  );
+  opacity: 0.88;
+}
+
+.velocityLabel {
+  font-size: var(--text-xs);
+  color: rgba(255, 255, 255, 0.65);
+  font-family: var(--font-sans);
+  white-space: nowrap;
+}
+
 
 .hud {
   position: absolute;

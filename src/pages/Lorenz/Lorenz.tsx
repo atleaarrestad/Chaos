@@ -388,7 +388,7 @@ export default function Lorenz() {
   const [selectedInstanceId, setSelectedInstanceId] = useState('i0');
   const [dt, setDt] = useState(initialDef.dt);
   const [speed, setSpeed] = useState(4);
-  const [trailLength, setTrailLength] = useState(10_000);
+  const [trailLength, setTrailLength] = useState(7_000);
   const [colorScheme, setColorScheme] = useState<ColorScheme>('velocity');
   const [running, setRunning] = useState(true);
   const [showInfo, setShowInfo] = useState(false);
@@ -962,38 +962,6 @@ export default function Lorenz() {
       ctx.restore();
     }
 
-    if (colorScheme === 'velocity') {
-      const barW = Math.round(W * 0.28);
-      const barH = Math.round(H * 0.018);
-      const barX = Math.round((W - barW) / 2);
-      const barY = H - Math.round(H * 0.055);
-      const fs = Math.max(10, Math.round(H * 0.022));
-
-      const grad = ctx.createLinearGradient(barX, 0, barX + barW, 0);
-      for (let i = 0; i <= 20; i++) {
-        const t = i / 20;
-        const [r, g, b] = COLORS.velocity(t);
-        grad.addColorStop(t, `rgb(${r},${g},${b})`);
-      }
-
-      ctx.save();
-      ctx.globalAlpha = 0.85;
-      ctx.fillStyle = grad;
-      ctx.beginPath();
-      ctx.roundRect(barX, barY, barW, barH, barH / 2);
-      ctx.fill();
-
-      ctx.globalAlpha = 1;
-      ctx.fillStyle = 'rgba(255,255,255,0.7)';
-      ctx.font = `${fs}px sans-serif`;
-      ctx.textBaseline = 'bottom';
-      ctx.textAlign = 'left';
-      ctx.fillText('slow', barX, barY - 3);
-      ctx.textAlign = 'right';
-      ctx.fillText('fast', barX + barW, barY - 3);
-      ctx.restore();
-    }
-
     const gpu = gpuRef.current;
     if (gpu && running && (showPoincare || showReturnMap)) {
       const selInst = instances.find(a => a.id === selectedInstanceId) ?? instances[0];
@@ -1173,6 +1141,14 @@ export default function Lorenz() {
   return (
     <div ref={containerRef} className={styles.container}>
       <canvas ref={canvasRef} className={styles.canvas} />
+
+      {colorScheme === 'velocity' && (
+        <div className={styles.velocityLegend} aria-hidden>
+          <span className={styles.velocityLabel}>slow</span>
+          <div className={styles.velocityBar} />
+          <span className={styles.velocityLabel}>fast</span>
+        </div>
+      )}
 
       <div ref={sidebarRef} className={styles.sidebar}>
         <div className={styles.sidebarPanels}>
