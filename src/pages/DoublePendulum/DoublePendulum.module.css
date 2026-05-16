@@ -342,3 +342,27 @@
   top: 8px;
   left: 10px;
 }
+
+.panelHeaderCollapsed {
+  border-bottom: none;
+  border-radius: var(--radius-lg, 12px);
+}
+
+.panelToggleBtn {
+  background: none;
+  border: none;
+  color: rgba(160, 220, 180, 0.55);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 4px;
+  line-height: 1;
+  flex-shrink: 0;
+  margin-left: var(--space-1);
+  border-radius: var(--radius-sm);
+  transition: color 0.15s, background 0.15s;
+}
+
+.panelToggleBtn:hover {
+  color: rgba(160, 220, 180, 1);
+  background: rgba(255, 255, 255, 0.07);
+}

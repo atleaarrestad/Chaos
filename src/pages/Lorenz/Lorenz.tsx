@@ -1288,49 +1288,13 @@ export default function Lorenz() {
           </ControlGroup>
         </ControlPanel>
 
-        <ControlPanel title={`Display${gpuAvailable ? ' · GPU' : ' · CPU'}`} defaultOpen={false}>
+        <ControlPanel title="Display" defaultOpen={false}>
           <ControlGroup>
             <Toggle
               label="Show axes"
               value={showAxes}
               onChange={setShowAxes}
               description="X / Y / Z reference frame"
-            />
-            <Toggle
-              label="Poincaré section"
-              value={showPoincare}
-              onChange={setShowPoincare}
-              description="Plane intersections of the trajectory"
-            />
-            {showPoincare && (
-              <>
-                <SelectControl
-                  label="Section axis"
-                  value={sectionAxis}
-                  onChange={setSectionAxis}
-                  options={[
-                    { value: 'y' as const, label: 'y = const  (shows x, z)' },
-                    { value: 'z' as const, label: 'z = const  (shows x, y)' },
-                    { value: 'x' as const, label: 'x = const  (shows y, z)' },
-                  ]}
-                />
-                <Slider
-                  label={`${sectionAxis} =`}
-                  value={poincareZ}
-                  onChange={setPoincareZ}
-                  min={sectionRange[0]}
-                  max={sectionRange[1]}
-                  step={sectionStep}
-                  format={v => v.toFixed(decimalsForStep(sectionStep))}
-                />
-              </>
-            )}
-            <Toggle
-              label="Return map"
-              value={showReturnMap}
-              onChange={setShowReturnMap}
-              disabled={!gpuAvailable}
-              description={gpuAvailable ? 'GPU density of zₙ₊₁ vs zₙ' : 'Requires WebGL2 GPU support'}
             />
             <SelectControl
               label="Color scheme"
@@ -1407,45 +1371,86 @@ export default function Lorenz() {
         </div>
       </div>
 
-      {(showPoincare || (showReturnMap && gpuAvailable)) && (
-        <div className={styles.panelStack}>
-          {showReturnMap && gpuAvailable && (
-            <div className={`${styles.analysisPanel} ${styles.analysisPanelReturn}`}>
-              <div className={styles.panelHeader}>
-                <span className={`${styles.panelTitle} ${styles.panelTitleReturn}`}>
-                  Return map: z<sub>n+1</sub> vs z<sub>n</sub>
-                </span>
-                <div className={styles.infoBtnWrapper}>
-                  <button className={styles.infoBtn} type="button" aria-label="About return map"><Info size={20} strokeWidth={1.5} /></button>
-                  <div className={styles.infoTooltip}>
-                    Each point (z<sub>n</sub>,&thinsp;z<sub>n+1</sub>) plots successive local z&#8209;maxima
-                    against each other. The tent&#8209;map shape confirms deterministic chaos:
-                    tiny differences grow exponentially.
-                  </div>
+      <div className={styles.panelStack}>
+        {gpuAvailable && (
+          <div className={`${styles.analysisPanel} ${styles.analysisPanelReturn}`}>
+            <div className={`${styles.panelHeader} ${!showReturnMap ? styles.panelHeaderCollapsed : ''}`}>
+              <span className={`${styles.panelTitle} ${styles.panelTitleReturn}`}>
+                Return map: z<sub>n+1</sub> vs z<sub>n</sub>
+              </span>
+              <div className={styles.infoBtnWrapper}>
+                <button className={styles.infoBtn} type="button" aria-label="About return map"><Info size={20} strokeWidth={1.5} /></button>
+                <div className={styles.infoTooltip}>
+                  Each point (z<sub>n</sub>,&thinsp;z<sub>n+1</sub>) plots successive local z&#8209;maxima
+                  against each other. The tent&#8209;map shape confirms deterministic chaos:
+                  tiny differences grow exponentially.
                 </div>
               </div>
+              <button
+                className={styles.panelToggleBtn}
+                type="button"
+                aria-label={showReturnMap ? 'Collapse return map' : 'Expand return map'}
+                onClick={() => setShowReturnMap(v => !v)}
+              >
+                {showReturnMap ? '▾' : '▸'}
+              </button>
+            </div>
+            {showReturnMap && (
               <div className={styles.plotWrapper}>
                 <canvas ref={returnMapPanelRef} className={styles.plotCanvas} />
                 <span className={`${styles.axisLabel} ${styles.axisLabelH} ${styles.axisLabelReturn}`}>z<sub>n</sub>&thinsp;→</span>
                 <span className={`${styles.axisLabel} ${styles.axisLabelV} ${styles.axisLabelReturn}`}>↑&thinsp;z<sub>n+1</sub></span>
                 <span className={`${styles.panelBadge} ${styles.panelBadgeReturn}`}>GPU</span>
               </div>
+            )}
+          </div>
+        )}
+        <div className={styles.analysisPanel}>
+          <div className={`${styles.panelHeader} ${!showPoincare ? styles.panelHeaderCollapsed : ''}`}>
+            <span className={styles.panelTitle}>
+              {showPoincare
+                ? <>Poincaré: {sectionAxis}&thinsp;=&thinsp;{formatAxisValue(poincareZ)}</>
+                : 'Poincaré section'}
+            </span>
+            <div className={styles.infoBtnWrapper}>
+              <button className={styles.infoBtn} type="button" aria-label="About Poincaré section"><Info size={20} strokeWidth={1.5} /></button>
+              <div className={styles.infoTooltip}>
+                Records each crossing of the {sectionAxis}&thinsp;=&thinsp;{formatAxisValue(poincareZ)} plane.
+                The crossing points form a fractal curve, revealing the attractor&rsquo;s
+                self&#8209;similar structure at every scale.
+              </div>
             </div>
-          )}
+            <button
+              className={styles.panelToggleBtn}
+              type="button"
+              aria-label={showPoincare ? 'Collapse Poincaré section' : 'Expand Poincaré section'}
+              onClick={() => setShowPoincare(v => !v)}
+            >
+              {showPoincare ? '▾' : '▸'}
+            </button>
+          </div>
           {showPoincare && (
-            <div className={styles.analysisPanel}>
-              <div className={styles.panelHeader}>
-                <span className={styles.panelTitle}>
-                  Poincaré: {sectionAxis} = {formatAxisValue(poincareZ)}
-                </span>
-                <div className={styles.infoBtnWrapper}>
-                  <button className={styles.infoBtn} type="button" aria-label="About Poincaré section"><Info size={20} strokeWidth={1.5} /></button>
-                  <div className={styles.infoTooltip}>
-                    Records each crossing of the {sectionAxis}&thinsp;=&thinsp;{formatAxisValue(poincareZ)} plane.
-                    The crossing points form a fractal curve, revealing the attractor&rsquo;s
-                    self&#8209;similar structure at every scale.
-                  </div>
-                </div>
+            <>
+              <div className={styles.panelControls}>
+                <SelectControl
+                  label="Axis"
+                  value={sectionAxis}
+                  onChange={setSectionAxis}
+                  options={[
+                    { value: 'y' as const, label: 'y = const  (shows x, z)' },
+                    { value: 'z' as const, label: 'z = const  (shows x, y)' },
+                    { value: 'x' as const, label: 'x = const  (shows y, z)' },
+                  ]}
+                />
+                <Slider
+                  label={`${sectionAxis} =`}
+                  value={poincareZ}
+                  onChange={setPoincareZ}
+                  min={sectionRange[0]}
+                  max={sectionRange[1]}
+                  step={sectionStep}
+                  format={v => v.toFixed(decimalsForStep(sectionStep))}
+                />
               </div>
               <div className={styles.plotWrapper}>
                 <canvas ref={poincarePanelRef} className={styles.plotCanvas} />
@@ -1453,10 +1458,10 @@ export default function Lorenz() {
                 <span className={`${styles.axisLabel} ${styles.axisLabelV}`}>↑&thinsp;{pcV}</span>
                 {gpuAvailable && <span className={styles.panelBadge}>GPU</span>}
               </div>
-            </div>
+            </>
           )}
         </div>
-      )}
+      </div>
 
       {showInfo && (
         <InfoDialog title="Strange Attractors" onClose={() => setShowInfo(false)}>

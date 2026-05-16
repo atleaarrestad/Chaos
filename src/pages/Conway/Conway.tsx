@@ -341,7 +341,7 @@ export default function Conway() {
   const [playing,      setPlaying]      = useState(false);
   const [speed,        setSpeed]        = useState(10);
   const [ageColor,     setAgeColor]     = useState(true);
-  const [showGraph,    setShowGraph]    = useState(true);
+  const [showGraph,    setShowGraph]    = useState(false);
   const [showInfo,     setShowInfo]     = useState(false);
   const [showExport,   setShowExport]   = useState(false);
   const [generation,   setGeneration]   = useState(0);
@@ -753,13 +753,8 @@ export default function Conway() {
                   ))}
                 </div>
               )}
-              <Toggle
-                label="Population graph"
-                value={showGraph}
-                onChange={setShowGraph}
-              />
-            </ControlGroup>
-          </ControlPanel>
+          </ControlGroup>
+        </ControlPanel>
 
           <ControlPanel title="Presets">
             <div className={styles.presetGrid}>
@@ -802,116 +797,113 @@ export default function Conway() {
           />
         </div>
       </div>
-      {showGraph && sparkData.length >= 2 && (() => {
-        const SVG_W = 240, SVG_H = 100;
-        const PL = 38, PR = 8, PT = 8, PB = 24;
-        const plotW = SVG_W - PL - PR;
-        const plotH = SVG_H - PT - PB;
-        const max    = Math.max(...sparkData, 1);
-        const startGen = Math.max(0, generation - sparkData.length + 1);
-        const fmtN = (n: number) =>
-          n >= 10000 ? `${(n / 1000).toFixed(0)}k`
-          : n >= 1000 ? `${(n / 1000).toFixed(1)}k`
-          : `${n}`;
+      <div className={styles.popPanel}>
+        <div className={`${styles.popPanelHeader} ${!showGraph ? styles.popPanelHeaderCollapsed : ''}`}>
+          <span className={styles.popPanelTitle}>Population</span>
+          <button
+            className={styles.popToggleBtn}
+            onClick={() => setShowGraph(v => !v)}
+            aria-label={showGraph ? 'Collapse population graph' : 'Expand population graph'}
+          >
+            {showGraph ? '▾' : '▸'}
+          </button>
+        </div>
+        {showGraph && (
+          <div className={styles.popPlot}>
+            {sparkData.length < 2 ? (
+              <div className={styles.popEmpty}>waiting for data…</div>
+            ) : (() => {
+              const SVG_W = 360, SVG_H = 150;
+              const PL = 57, PR = 12, PT = 12, PB = 36;
+              const plotW = SVG_W - PL - PR;
+              const plotH = SVG_H - PT - PB;
+              const max    = Math.max(...sparkData, 1);
+              const startGen = Math.max(0, generation - sparkData.length + 1);
+              const fmtN = (n: number) =>
+                n >= 10000 ? `${(n / 1000).toFixed(0)}k`
+                : n >= 1000 ? `${(n / 1000).toFixed(1)}k`
+                : `${n}`;
 
-        const linePts = sparkData
-          .map((v, i) => {
-            const x = PL + (i / (sparkData.length - 1)) * plotW;
-            const y = PT + (1 - v / max) * plotH;
-            return `${x.toFixed(1)},${y.toFixed(1)}`;
-          })
-          .join(' ');
+              const linePts = sparkData
+                .map((v, i) => {
+                  const x = PL + (i / (sparkData.length - 1)) * plotW;
+                  const y = PT + (1 - v / max) * plotH;
+                  return `${x.toFixed(1)},${y.toFixed(1)}`;
+                })
+                .join(' ');
 
-        const fillPts = `${PL},${PT + plotH} ${linePts} ${(PL + plotW).toFixed(1)},${PT + plotH}`;
+              const fillPts = `${PL},${PT + plotH} ${linePts} ${(PL + plotW).toFixed(1)},${PT + plotH}`;
 
-        return (
-          <div className={styles.popPanel}>
-            <div className={styles.popPanelHeader}>
-              <span className={styles.popPanelTitle}>Population</span>
-              <button
-                className={styles.popCloseBtn}
-                onClick={() => setShowGraph(false)}
-                aria-label="Close graph"
-              >
-                ×
-              </button>
-            </div>
-            <div className={styles.popPlot}>
-              <svg
-                width={SVG_W} height={SVG_H}
-                viewBox={`0 0 ${SVG_W} ${SVG_H}`}
-                className={styles.popSvg}
-                aria-hidden="true"
-              >
-                {/* Axis lines */}
-                <line x1={PL} y1={PT} x2={PL} y2={PT + plotH}
-                  stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
-                <line x1={PL} y1={PT + plotH} x2={PL + plotW} y2={PT + plotH}
-                  stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
-
-                {/* Y ticks: 0, mid, max */}
-                {([0, 0.5, 1] as const).map((frac) => {
-                  const val = Math.round(max * frac);
-                  const y   = PT + (1 - frac) * plotH;
-                  return (
-                    <g key={frac}>
-                      <line x1={PL - 3} y1={y} x2={PL} y2={y}
-                        stroke="rgba(255,255,255,0.2)" strokeWidth="1" />
-                      <text x={PL - 5} y={y + 3.5} textAnchor="end"
-                        fill="rgba(255,255,255,0.4)" fontSize="8">
-                        {fmtN(val)}
-                      </text>
-                    </g>
-                  );
-                })}
-
-                {/* X tick labels: start gen + current gen */}
-                <text x={PL} y={PT + plotH + 13} textAnchor="middle"
-                  fill="rgba(255,255,255,0.35)" fontSize="8">
-                  {startGen.toLocaleString()}
-                </text>
-                <text x={PL + plotW} y={PT + plotH + 13} textAnchor="middle"
-                  fill="rgba(255,255,255,0.35)" fontSize="8">
-                  {generation.toLocaleString()}
-                </text>
-
-                {/* Axis labels */}
-                <text x={PL + plotW / 2} y={SVG_H - 1} textAnchor="middle"
-                  fill="rgba(255,255,255,0.25)" fontSize="7.5">
-                  generation →
-                </text>
-                <text
-                  x={8} y={PT + plotH / 2}
-                  textAnchor="middle"
-                  fill="rgba(255,255,255,0.25)"
-                  fontSize="7.5"
-                  transform={`rotate(-90, 8, ${PT + plotH / 2})`}
+              return (
+                <svg
+                  width={SVG_W} height={SVG_H}
+                  viewBox={`0 0 ${SVG_W} ${SVG_H}`}
+                  className={styles.popSvg}
+                  aria-hidden="true"
                 >
-                  ↑ pop
-                </text>
+                  <line x1={PL} y1={PT} x2={PL} y2={PT + plotH}
+                    stroke="rgba(255,255,255,0.4)" strokeWidth="1.5" />
+                  <line x1={PL} y1={PT + plotH} x2={PL + plotW} y2={PT + plotH}
+                    stroke="rgba(255,255,255,0.4)" strokeWidth="1.5" />
 
-                {/* Fill under the line */}
-                <polygon
-                  points={fillPts}
-                  fill="var(--col-conway)"
-                  opacity="0.08"
-                />
+                  {([0, 0.5, 1] as const).map((frac) => {
+                    const val = Math.round(max * frac);
+                    const y   = PT + (1 - frac) * plotH;
+                    return (
+                      <g key={frac}>
+                        <line x1={PL - 5} y1={y} x2={PL} y2={y}
+                          stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" />
+                        <text x={PL - 8} y={y + 5} textAnchor="end"
+                          fill="rgba(255,255,255,0.85)" fontSize="12">
+                          {fmtN(val)}
+                        </text>
+                      </g>
+                    );
+                  })}
 
-                {/* Data line */}
-                <polyline
-                  points={linePts}
-                  fill="none"
-                  stroke="var(--col-conway)"
-                  strokeWidth="1.5"
-                  strokeLinejoin="round"
-                  strokeLinecap="round"
-                  opacity="0.85"
-                />
-              </svg>
-            </div>
+                  <text x={PL} y={PT + plotH + 20} textAnchor="middle"
+                    fill="rgba(255,255,255,0.75)" fontSize="12">
+                    {startGen.toLocaleString()}
+                  </text>
+                  <text x={PL + plotW} y={PT + plotH + 20} textAnchor="middle"
+                    fill="rgba(255,255,255,0.75)" fontSize="12">
+                    {generation.toLocaleString()}
+                  </text>
+
+                  <text x={PL + plotW / 2} y={SVG_H - 2} textAnchor="middle"
+                    fill="rgba(255,255,255,0.55)" fontSize="11">
+                    generation →
+                  </text>
+                  <text
+                    x={12} y={PT + plotH / 2}
+                    textAnchor="middle"
+                    fill="rgba(255,255,255,0.55)"
+                    fontSize="11"
+                    transform={`rotate(-90, 12, ${PT + plotH / 2})`}
+                  >
+                    ↑ pop
+                  </text>
+
+                  <polygon
+                    points={fillPts}
+                    fill="var(--col-conway)"
+                    opacity="0.08"
+                  />
+                  <polyline
+                    points={linePts}
+                    fill="none"
+                    stroke="var(--col-conway)"
+                    strokeWidth="2.25"
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                    opacity="0.85"
+                  />
+                </svg>
+              );
+            })()}
           </div>
-        );
-      })()}
+        )}
+      </div>
 
       {showExport && (
         <ExportDialog

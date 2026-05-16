@@ -780,8 +780,6 @@ export default function DoublePendulum() {
           <ControlGroup>
             <Toggle label="Pendulum" value={showPendulum} onChange={setShowPendulum}
               description="Show reference pendulum geometry" />
-            <Toggle label="Phase portrait" value={showPhase} onChange={setShowPhase}
-              description="Show θ₁ vs ω₁ phase space" />
             <Toggle label="Chaos ensemble" value={showEnsemble} onChange={v => {
                 setShowEnsemble(v);
                 if (v) resetSimulation();
@@ -829,31 +827,39 @@ export default function DoublePendulum() {
       </div>
 
       {/* ── Phase portrait panel ─────────────────────────────────────────────── */}
-      {showPhase && (
-        <div className={styles.panelStack}>
-          <div className={styles.analysisPanel}>
-            <div className={styles.panelHeader}>
-              <span className={styles.panelTitle}>Phase Portrait</span>
-              <div className={styles.infoBtnWrapper}>
-                <button className={styles.infoBtn} type="button">
-                  <Info size={13} />
-                </button>
-                <div className={styles.infoTooltip}>
-                  θ₁ (horizontal, −π to π) vs ω₁ (vertical, angular velocity of rod 1).
-                  The reference pendulum traces its trajectory through phase space.
-                  Chaotic motion fills the accessible region irregularly,
-                  while periodic motion forms closed loops.
-                </div>
+      <div className={styles.panelStack}>
+        <div className={styles.analysisPanel}>
+          <div className={`${styles.panelHeader} ${!showPhase ? styles.panelHeaderCollapsed : ''}`}>
+            <span className={styles.panelTitle}>Phase Portrait</span>
+            <div className={styles.infoBtnWrapper}>
+              <button className={styles.infoBtn} type="button">
+                <Info size={13} />
+              </button>
+              <div className={styles.infoTooltip}>
+                θ₁ (horizontal, −π to π) vs ω₁ (vertical, angular velocity of rod 1).
+                The reference pendulum traces its trajectory through phase space.
+                Chaotic motion fills the accessible region irregularly,
+                while periodic motion forms closed loops.
               </div>
             </div>
+            <button
+              className={styles.panelToggleBtn}
+              type="button"
+              aria-label={showPhase ? 'Collapse phase portrait' : 'Expand phase portrait'}
+              onClick={() => setShowPhase(v => !v)}
+            >
+              {showPhase ? '▾' : '▸'}
+            </button>
+          </div>
+          {showPhase && (
             <div className={styles.plotWrapper}>
               <canvas ref={phasePanelRef} className={styles.plotCanvas} />
               <span className={`${styles.axisLabel} ${styles.axisLabelH}`}>θ₁</span>
               <span className={`${styles.axisLabel} ${styles.axisLabelV}`}>ω₁</span>
             </div>
-          </div>
+          )}
         </div>
-      )}
+      </div>
 
       {showExport && (
         <ExportDialog
