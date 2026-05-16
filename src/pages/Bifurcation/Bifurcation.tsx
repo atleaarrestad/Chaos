@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Slider, Toggle, SelectControl,
-  ControlPanel, ControlGroup,
+  ControlPanel, ControlGroup, SimControls,
 } from '@/components/Controls';
 import { InfoDialog } from '@/components/InfoDialog';
 import {
@@ -395,6 +395,17 @@ export default function Bifurcation() {
     setZoomHistory([]);
   }, []);
 
+  // ─── Keyboard shortcuts ───────────────────────────────────────────────────
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.code === 'KeyR') { e.preventDefault(); reset(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [reset]);
+
   // ─── Render ───────────────────────────────────────────────────────────────
 
   const rTicks = niceTicks(rMin, rMax, 4);
@@ -575,9 +586,7 @@ export default function Bifurcation() {
               ← Back
             </button>
           )}
-          <button className={styles.resetBtn} type="button" onClick={reset}>
-            Reset
-          </button>
+          <SimControls onReset={reset} />
         </div>
       </div>
 

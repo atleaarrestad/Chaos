@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import {
   Slider, Toggle, SelectControl,
-  ControlPanel, ControlGroup,
+  ControlPanel, ControlGroup, SimControls,
 } from '@/components/Controls';
 import { InfoDialog } from '@/components/InfoDialog';
 import type { PaletteId } from './mandelbrot.worker';
@@ -714,6 +714,18 @@ export default function Mandelbrot() {
     setAnimating(a => !a);
   }, []);
 
+  // ─── Keyboard shortcuts ───────────────────────────────────────────────────
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.code === 'Space') { e.preventDefault(); if (gpuAvailable) toggleAnimation(); }
+      if (e.code === 'KeyR')  { e.preventDefault(); setAnimating(false); reset(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [toggleAnimation, reset, gpuAvailable]);
+
   // ── color / quality param handlers ─────────────────────────────────────────
 
   const handlePaletteChange = useCallback((id: PaletteId) => {
@@ -966,19 +978,11 @@ export default function Mandelbrot() {
         </ControlPanel>
 
         <ControlPanel title="Animation" defaultOpen={false}>
-          <ControlGroup>
-            <button
-              className={`${styles.animBtn} ${animating ? styles.animBtnActive : ''}`}
-              type="button"
-              onClick={toggleAnimation}
-              disabled={!gpuAvailable}
-            >
-              {animating ? '⏸ Pause' : '▶ Play'}
-            </button>
-            {!gpuAvailable && (
-              <span className={styles.animNote}>Requires GPU rendering</span>
-            )}
-          </ControlGroup>
+          {!gpuAvailable && (
+            <ControlGroup>
+              <span className={styles.animNote}>Animation requires GPU rendering</span>
+            </ControlGroup>
+          )}
           <ControlGroup>
             <SelectControl
               label="Mode"
@@ -1057,6 +1061,12 @@ export default function Mandelbrot() {
         </div>{/* end sidebarPanels */}
 
         <div className={styles.sidebarActions}>
+        <SimControls
+          running={animating}
+          onToggle={toggleAnimation}
+          onReset={() => { setAnimating(false); reset(); }}
+          toggleDisabled={!gpuAvailable}
+        />
         <div className={styles.saveGroup}>
           <span className={styles.saveGroupLabel}>
             {saving ? 'Saving…' : '↓ Save PNG'}
@@ -1075,10 +1085,6 @@ export default function Mandelbrot() {
             ))}
           </div>
         </div>
-
-        <button className={styles.resetBtn} type="button" onClick={reset}>
-          Reset View
-        </button>
         </div>
       </div>
 

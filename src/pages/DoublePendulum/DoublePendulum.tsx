@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Info } from 'lucide-react';
 import {
   Slider, Toggle, SelectControl,
-  ControlPanel, ControlGroup,
+  ControlPanel, ControlGroup, SimControls,
 } from '@/components/Controls';
 import { InfoDialog } from '@/components/InfoDialog';
 import { detectWebGL2 } from '@/lib/gpu/context';
@@ -237,6 +237,18 @@ export default function DoublePendulum() {
       tCtx.fillRect(0, 0, tc.width, tc.height);
     }
   }, [gpuParams]);
+
+  // ─── Keyboard shortcuts ───────────────────────────────────────────────────
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.code === 'Space') { e.preventDefault(); setRunning(r => !r); }
+      if (e.code === 'KeyR')  { e.preventDefault(); resetSimulation(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [resetSimulation]);
 
   /** Wraps a setter so that manually dragging any slider clears the active preset. */
   const clearPreset = useCallback((setter: (v: number) => void) => (v: number) => {
@@ -707,7 +719,6 @@ export default function DoublePendulum() {
 
         <ControlPanel title="Animation">
           <ControlGroup>
-            <Toggle label="Running" value={running} onChange={setRunning} />
             <Slider
               label="Speed"
               value={speed} onChange={setSpeed}
@@ -770,9 +781,11 @@ export default function DoublePendulum() {
         </div>{/* end sidebarPanels */}
 
         <div className={styles.sidebarActions}>
-          <button className={styles.resetBtn} type="button" onClick={resetSimulation}>
-            Reset Simulation
-          </button>
+          <SimControls
+            running={running}
+            onToggle={() => setRunning(r => !r)}
+            onReset={resetSimulation}
+          />
         </div>
       </div>
 

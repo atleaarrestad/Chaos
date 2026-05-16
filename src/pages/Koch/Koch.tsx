@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Slider, Toggle, SelectControl,
-  ControlPanel, ControlGroup,
+  ControlPanel, ControlGroup, SimControls,
 } from '@/components/Controls';
 import { InfoDialog } from '@/components/InfoDialog';
 import {
@@ -336,6 +336,18 @@ export default function Koch() {
     rotRef.current = 0;
   }, []);
 
+  // ─── Keyboard shortcuts ───────────────────────────────────────────────────
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.code === 'Space') { e.preventDefault(); setRotate(r => !r); }
+      if (e.code === 'KeyR')  { e.preventDefault(); reset(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [reset]);
+
   const nVerts = VERT_COUNTS(sides, depth);
 
   return (
@@ -424,21 +436,22 @@ export default function Koch() {
           </ControlPanel>
 
           {/* Rendering */}
-          <ControlPanel title="Rendering">
-            <ControlGroup>
-              <Toggle label="Rotate" value={rotate} onChange={setRotate} />
-              {gpuSupported && (
+          {gpuSupported && (
+            <ControlPanel title="Rendering">
+              <ControlGroup>
                 <Toggle label="GPU" value={useGPU} onChange={setUseGPU} />
-              )}
-            </ControlGroup>
-          </ControlPanel>
+              </ControlGroup>
+            </ControlPanel>
+          )}
         </div>
 
         {/* Actions */}
         <div className={styles.sidebarActions}>
-          <button className={styles.resetBtn} onClick={reset}>
-            Reset View
-          </button>
+          <SimControls
+            running={rotate}
+            onToggle={() => setRotate(r => !r)}
+            onReset={reset}
+          />
         </div>
       </div>
 

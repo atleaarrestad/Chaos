@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Slider, Toggle, SelectControl,
-  ControlPanel, ControlGroup,
+  ControlPanel, ControlGroup, SimControls,
 } from '@/components/Controls';
 import { InfoDialog } from '@/components/InfoDialog';
 import styles from './Cardioid.module.css';
@@ -206,6 +206,18 @@ export default function Cardioid() {
     setActivePreset(0);
   }, []);
 
+  // ─── Keyboard shortcuts ───────────────────────────────────────────────────
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.code === 'Space') { e.preventDefault(); setAnimate(a => !a); }
+      if (e.code === 'KeyR')  { e.preventDefault(); reset(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [reset]);
+
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
@@ -258,7 +270,6 @@ export default function Cardioid() {
 
           <ControlPanel title="Animation">
             <ControlGroup>
-              <Toggle label="Animate" value={animate} onChange={setAnimate} />
               <Slider
                 label="Speed"
                 value={animSpeed}
@@ -309,9 +320,11 @@ export default function Cardioid() {
         </div>
 
         <div className={styles.sidebarActions}>
-          <button className={styles.resetBtn} type="button" onClick={reset}>
-            Reset
-          </button>
+          <SimControls
+            running={animate}
+            onToggle={() => setAnimate(a => !a)}
+            onReset={reset}
+          />
         </div>
       </div>
 

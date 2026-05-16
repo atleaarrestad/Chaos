@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Slider, Toggle, ControlPanel, ControlGroup } from '@/components/Controls';
+import { Slider, Toggle, ControlPanel, ControlGroup, SimControls } from '@/components/Controls';
 import styles from './Conway.module.css';
 
 // ─── Grid constants ───────────────────────────────────────────────────────────
@@ -580,6 +580,18 @@ export default function Conway() {
 
   const togglePlay = useCallback(() => setPlaying(p => !p), []);
 
+  // ─── Keyboard shortcuts ───────────────────────────────────────────────────
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
+      if (e.code === 'KeyR')  { e.preventDefault(); handleClear(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [togglePlay, handleClear]);
+
   return (
     <div className={styles.container}>
       <canvas
@@ -595,13 +607,6 @@ export default function Conway() {
       {/* Sidebar */}
       <div className={styles.sidebar}>
         <div className={styles.sidebarPanels}>
-
-          <button
-            className={[styles.playBtn, playing ? styles.playBtnActive : ''].join(' ')}
-            onClick={togglePlay}
-          >
-            {playing ? '⏸  Pause' : '▶  Play'}
-          </button>
 
           <ControlPanel title="Speed">
             <ControlGroup>
@@ -670,14 +675,16 @@ export default function Conway() {
         </div>
 
         <div className={styles.sidebarActions}>
+          <SimControls
+            running={playing}
+            onToggle={togglePlay}
+            onReset={handleClear}
+          />
           <div className={styles.actionPanel}>
             <span className={styles.actionPanelLabel}>Actions</span>
             <div className={styles.actionRow}>
               <button className={styles.actionBtn} onClick={handleStep} disabled={playing}>
                 Step
-              </button>
-              <button className={styles.actionBtn} onClick={handleClear}>
-                Clear
               </button>
               <button className={styles.actionBtn} onClick={centerView}>
                 Center

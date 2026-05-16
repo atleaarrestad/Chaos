@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, type CSSProperties } from 'react';
 import {
   Slider, Toggle,
-  ControlPanel, ControlGroup,
+  ControlPanel, ControlGroup, SimControls,
 } from '@/components/Controls';
 import { InfoDialog } from '@/components/InfoDialog';
 import styles from './ThreeBody.module.css';
@@ -729,7 +729,6 @@ export default function ThreeBody() {
 
           <ControlPanel title="Animation">
             <ControlGroup>
-              <Toggle label="Running" value={running} onChange={setRunning} />
               <Slider
                 label="Speed"
                 value={speed} onChange={setSpeed}
@@ -775,9 +774,11 @@ export default function ThreeBody() {
         </div>
 
         <div className={styles.sidebarActions}>
-          <button className={styles.resetBtn} type="button" onClick={resetSimulation}>
-            Reset Simulation
-          </button>
+          <SimControls
+            running={running}
+            onToggle={() => setRunning(r => !r)}
+            onReset={resetSimulation}
+          />
         </div>
       </div>
 
@@ -789,7 +790,7 @@ export default function ThreeBody() {
         </div>
         <div className={styles.hudRight}>
           <span className={styles.hudHint} ref={energyRef} />
-          <span className={styles.hudHint}>{running ? 'running' : 'paused'} · Space / R</span>
+          <span className={styles.hudHint}>{running ? 'running' : 'paused'}</span>
           <button
             className={styles.infoBtn}
             onClick={() => setShowInfo(true)}

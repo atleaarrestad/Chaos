@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, type CSSProperties } from 're
 import { Info } from 'lucide-react';
 import {
   Slider, Toggle, SelectControl,
-  ControlPanel, ControlGroup,
+  ControlPanel, ControlGroup, SimControls,
 } from '@/components/Controls';
 import { InfoDialog } from '@/components/InfoDialog';
 import { detectWebGL2 } from '@/lib/gpu/context';
@@ -447,6 +447,18 @@ export default function Lorenz() {
     });
     gpuRef.current?.reset();
   }, []);
+
+  // ─── Keyboard shortcuts ───────────────────────────────────────────────────
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.code === 'Space') { e.preventDefault(); setRunning(r => !r); }
+      if (e.code === 'KeyR')  { e.preventDefault(); reset(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [reset]);
 
   const snapTo = useCallback((rx: number, ry: number) => {
     rotRef.current = { x: rx, y: ry };
@@ -1207,7 +1219,6 @@ export default function Lorenz() {
 
         <ControlPanel title="Animation">
           <ControlGroup>
-            <Toggle label="Running" value={running} onChange={setRunning} />
             <Toggle
               label="Auto-rotate"
               value={autoRotate}
@@ -1318,9 +1329,11 @@ export default function Lorenz() {
         </div>{/* end sidebarPanels */}
 
         <div className={styles.sidebarActions}>
-        <button className={styles.resetBtn} type="button" onClick={reset}>
-          Reset Trajectory
-        </button>
+        <SimControls
+          running={running}
+          onToggle={() => setRunning(r => !r)}
+          onReset={reset}
+        />
         </div>
       </div>
 
