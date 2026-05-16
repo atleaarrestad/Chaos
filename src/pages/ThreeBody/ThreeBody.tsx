@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, type CSSProperties } from 'react';
 import {
   Slider, Toggle,
   ControlPanel, ControlGroup,
@@ -145,13 +145,23 @@ const PRESETS: Preset[] = [
     ],
   },
   {
-    label: 'Chaos',
-    desc: 'Three unequal masses in a configuration that quickly produces an unpredictable gravitational dance',
+    label: 'Butterfly',
+    desc: 'Butterfly I choreography — three equal masses trace symmetric wing-shaped loops (Šuvakov & Dmitrašinović, 2013)',
     G: 1, dt: 0.001,
     bodies: [
-      { x: -1,  y:  0.5,  vx:  0.30,  vy: -0.20,  mass: 1.5 },
-      { x:  1,  y:  0.3,  vx: -0.10,  vy:  0.20,  mass: 2.0 },
-      { x:  0,  y: -1.2,  vx: -0.25,  vy: -0.10,  mass: 1.0 },
+      { x: -1, y: 0, vx:  0.30689, vy:  0.12551, mass: 1 },
+      { x:  1, y: 0, vx:  0.30689, vy:  0.12551, mass: 1 },
+      { x:  0, y: 0, vx: -0.61378, vy: -0.25102, mass: 1 },
+    ],
+  },
+  {
+    label: 'Moth',
+    desc: 'Moth I choreography — three bodies weave an intricate moth-shaped periodic path (Šuvakov & Dmitrašinović, 2013)',
+    G: 1, dt: 0.001,
+    bodies: [
+      { x: -1, y: 0, vx:  0.46444, vy:  0.39606, mass: 1 },
+      { x:  1, y: 0, vx:  0.46444, vy:  0.39606, mass: 1 },
+      { x:  0, y: 0, vx: -0.92888, vy: -0.79212, mass: 1 },
     ],
   },
 ];
@@ -180,6 +190,10 @@ export default function ThreeBody() {
   const [G,            setG]            = useState(PRESETS[0].G);
   const [activePreset, setActivePreset] = useState<number | null>(0);
   const [showInfo,     setShowInfo]     = useState(false);
+  const [selectedBody, setSelectedBody] = useState(0);
+  const [masses,       setMasses]       = useState<[number, number, number]>(
+    PRESETS[0].bodies.map(b => b.mass) as [number, number, number]
+  );
 
   const canvasRef   = useRef<HTMLCanvasElement>(null);
   const rafRef      = useRef(0);
@@ -242,6 +256,7 @@ export default function ThreeBody() {
     setActivePreset(idx);
     setDt(preset.dt);
     setG(preset.G);
+    setMasses(preset.bodies.map(b => b.mass) as [number, number, number]);
     pRef.current = { ...pRef.current, dt: preset.dt, G: preset.G };
     bodiesRef.current = JSON.parse(JSON.stringify(preset.bodies));
     clearTrails();
@@ -258,6 +273,18 @@ export default function ThreeBody() {
     }
     clearTrails();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Body mass ──────────────────────────────────────────────────────────────
+
+  const setBodyMass = useCallback((bi: number, mass: number) => {
+    bodiesRef.current[bi].mass = mass;
+    setMasses(prev => {
+      const next = [...prev] as [number, number, number];
+      next[bi] = mass;
+      return next;
+    });
+    setActivePreset(null);
+  }, []);
 
   // ── Main RAF draw loop ─────────────────────────────────────────────────────
 
@@ -491,6 +518,33 @@ export default function ThreeBody() {
             </ControlGroup>
           </ControlPanel>
 
+          <ControlPanel title="Bodies">
+            <div className={styles.bodyTabs}>
+              {BODY_COLORS.map((col, bi) => (
+                <button
+                  key={bi}
+                  type="button"
+                  className={`${styles.bodyTab}${selectedBody === bi ? ` ${styles.bodyTabActive}` : ''}`}
+                  style={{ '--tab-color': col } as CSSProperties}
+                  onClick={() => setSelectedBody(bi)}
+                >
+                  <span className={styles.bodyTabDot} style={{ background: col }} />
+                  Body {bi + 1}
+                </button>
+              ))}
+            </div>
+            <ControlGroup>
+              <Slider
+                label="Mass"
+                value={masses[selectedBody]}
+                onChange={v => setBodyMass(selectedBody, v)}
+                min={0.1} max={20} step={0.1}
+                format={v => v.toFixed(1)}
+                manualInput
+              />
+            </ControlGroup>
+          </ControlPanel>
+
           <ControlPanel title="Animation">
             <ControlGroup>
               <Toggle label="Running" value={running} onChange={setRunning} />
@@ -588,8 +642,12 @@ export default function ThreeBody() {
               falling in, perturbing and eventually disrupting the orbit.
             </li>
             <li>
-              <strong>Chaos:</strong> Three unequal masses in a configuration that
-              leads to an unpredictable gravitational dance.
+              <strong>Butterfly:</strong> Butterfly I choreography — all three bodies
+              trace the same symmetric, wing-shaped loops in sequence (Šuvakov &amp; Dmitrašinović, 2013).
+            </li>
+            <li>
+              <strong>Moth:</strong> Moth I choreography — a more intricate periodic
+              path where the three bodies weave a moth-shaped figure (Šuvakov &amp; Dmitrašinović, 2013).
             </li>
           </ul>
           <h3>Energy drift</h3>
