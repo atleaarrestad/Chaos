@@ -703,12 +703,6 @@ export default function Conway() {
         </div>
 
         <div className={styles.sidebarActions}>
-          <SimControls
-            running={playing}
-            onToggle={togglePlay}
-            onReset={handleClear}
-            onExport={() => setShowExport(true)}
-          />
           <div className={styles.actionPanel}>
             <span className={styles.actionPanelLabel}>Actions</span>
             <div className={styles.actionRow}>
@@ -720,10 +714,14 @@ export default function Conway() {
               </button>
             </div>
           </div>
+          <SimControls
+            running={playing}
+            onToggle={togglePlay}
+            onReset={handleClear}
+            onExport={() => setShowExport(true)}
+          />
         </div>
       </div>
-
-      {/* Population graph panel */}
       {showGraph && sparkData.length >= 2 && (() => {
         const SVG_W = 240, SVG_H = 100;
         const PL = 38, PR = 8, PT = 8, PB = 24;
