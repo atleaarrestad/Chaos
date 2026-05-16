@@ -11,6 +11,7 @@ const Cardioid        = lazy(() => import('@/pages/Cardioid/Cardioid'));
 const Bifurcation     = lazy(() => import('@/pages/Bifurcation/Bifurcation'));
 const Koch            = lazy(() => import('@/pages/Koch/Koch'));
 const Conway          = lazy(() => import('@/pages/Conway/Conway'));
+const CellularAutomata = lazy(() => import('@/pages/CellularAutomata/CellularAutomata'));
 const ThreeBody       = lazy(() => import('@/pages/ThreeBody/ThreeBody'));
 const NotFound        = lazy(() => import('@/pages/NotFound/NotFound'));
 
@@ -51,6 +52,7 @@ export const router = createBrowserRouter([
       { path: 'double-pendulum', element: <Lazy><DoublePendulum /></Lazy> },
       { path: 'koch', element: <Lazy><Koch /></Lazy> },
       { path: 'conway', element: <Lazy><Conway /></Lazy> },
+      { path: 'cellular-automata', element: <Lazy><CellularAutomata /></Lazy> },
       { path: 'three-body', element: <Lazy><ThreeBody /></Lazy> },
       { path: '*', element: <Lazy><NotFound /></Lazy> },
     ],

@@ -9,6 +9,7 @@ export type PreviewType =
   | 'koch'
   | 'pendulum'
   | 'conway'
+  | 'cellular'
   | 'threebody';
 
 type Renderer = (canvas: HTMLCanvasElement) => () => void;
@@ -430,6 +431,69 @@ const conwayRenderer: Renderer = (canvas) => {
   return () => cancelAnimationFrame(raf);
 };
 
+// ─── Cellular Automata (Langton's Ant mini) ────────────────────────────────
+
+const cellularRenderer: Renderer = (canvas) => {
+  const dpr = window.devicePixelRatio || 1;
+  const W = (canvas.width = Math.round(canvas.offsetWidth * dpr));
+  const H = (canvas.height = Math.round(canvas.offsetHeight * dpr));
+  const ctx = canvas.getContext('2d')!;
+
+  const COLS = 50, ROWS = 30;
+  const grid = new Uint8Array(COLS * ROWS);
+  const ant = { x: Math.floor(COLS / 2), y: Math.floor(ROWS / 2), dir: 0 };
+  const cw = W / COLS;
+  const ch = H / ROWS;
+  let raf = 0;
+
+  const idx = (x: number, y: number) => y * COLS + x;
+  const wrap = (value: number, max: number) => ((value % max) + max) % max;
+
+  function step() {
+    const i = idx(ant.x, ant.y);
+    const state = grid[i];
+    ant.dir = wrap(ant.dir + (state === 0 ? 1 : -1), 4);
+    grid[i] = state === 0 ? 1 : 0;
+
+    if (ant.dir === 0) ant.y = wrap(ant.y - 1, ROWS);
+    if (ant.dir === 1) ant.x = wrap(ant.x + 1, COLS);
+    if (ant.dir === 2) ant.y = wrap(ant.y + 1, ROWS);
+    if (ant.dir === 3) ant.x = wrap(ant.x - 1, COLS);
+  }
+
+  function frame() {
+    for (let i = 0; i < 2; i++) step();
+
+    ctx.fillStyle = '#0c0c1e';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#c084fc';
+    for (let y = 0; y < ROWS; y++) {
+      for (let x = 0; x < COLS; x++) {
+        if (!grid[idx(x, y)]) continue;
+        ctx.fillRect(
+          Math.round(x * cw),
+          Math.round(y * ch),
+          Math.max(1, Math.ceil(cw)),
+          Math.max(1, Math.ceil(ch)),
+        );
+      }
+    }
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(
+      Math.round(ant.x * cw),
+      Math.round(ant.y * ch),
+      Math.max(2, Math.ceil(cw)),
+      Math.max(2, Math.ceil(ch)),
+    );
+
+    raf = requestAnimationFrame(frame);
+  }
+
+  raf = requestAnimationFrame(frame);
+  return () => cancelAnimationFrame(raf);
+};
+
 // ─── Three Body Problem (figure-8 orbit) ────────────────────────────────────
 
 const threebodyRenderer: Renderer = (canvas) => {
@@ -507,6 +571,7 @@ const RENDERERS: Record<PreviewType, Renderer> = {
   koch:        kochRenderer,
   pendulum:    pendulumRenderer,
   conway:      conwayRenderer,
+  cellular:    cellularRenderer,
   threebody:   threebodyRenderer,
 };
 

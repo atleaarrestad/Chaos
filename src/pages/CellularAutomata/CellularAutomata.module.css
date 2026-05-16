@@ -1,0 +1,290 @@
+.container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #0c0c1e;
+  --accent: var(--col-ca);
+  --accent-dim: color-mix(in srgb, var(--col-ca) 18%, transparent);
+  --accent-glow: color-mix(in srgb, var(--col-ca) 42%, transparent);
+}
+
+.canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: default;
+}
+
+.sidebar {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--space-4);
+  width: 272px;
+  height: calc(100% - var(--space-8) - 60px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  z-index: 10;
+}
+
+.sidebarPanels {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-hover) transparent;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.sidebarPanels::-webkit-scrollbar { width: 4px; }
+.sidebarPanels::-webkit-scrollbar-track { background: transparent; }
+.sidebarPanels::-webkit-scrollbar-thumb {
+  background: var(--border-hover);
+  border-radius: var(--radius-full);
+}
+
+.rulesetList {
+  padding: var(--space-4) var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.rulesetSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.rulesetHeader {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+}
+
+.rulesetGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-2);
+}
+
+.rulesetBtn {
+  padding: var(--space-2) var(--space-2);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background var(--ease-fast), color var(--ease-fast), border-color var(--ease-fast), box-shadow var(--ease-fast);
+  text-align: left;
+}
+
+.rulesetBtn:hover {
+  background: color-mix(in srgb, var(--col-ca) 12%, rgba(255, 255, 255, 0.05));
+  border-color: var(--col-ca);
+  color: var(--text);
+}
+
+.rulesetBtnActive {
+  background: color-mix(in srgb, var(--col-ca) 14%, rgba(255, 255, 255, 0.05));
+  border-color: var(--col-ca);
+  color: var(--col-ca);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--col-ca) 25%, transparent);
+}
+
+.rulesetNameRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.rulesetDot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+  box-shadow: 0 0 10px currentColor;
+}
+
+.rulesetName {
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.03em;
+}
+
+.infoPanel {
+  padding: var(--space-4) var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  color: rgba(255, 255, 255, 0.7);
+  line-height: 1.65;
+}
+
+.infoMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.categoryBadge,
+.notationBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+}
+
+.categoryBadge {
+  background: color-mix(in srgb, var(--col-ca) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--col-ca) 35%, transparent);
+  color: var(--col-ca);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.notationBadge {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.88);
+  font-family: var(--font-mono);
+}
+
+.infoText {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.sidebarActions {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.actionPanel {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  box-shadow: var(--shadow-md);
+}
+
+.actionPanelLabel {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--text-subtle);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.actionRow {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-2);
+}
+
+.actionBtn {
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: background var(--ease-fast), color var(--ease-fast), border-color var(--ease-fast);
+  text-align: center;
+}
+
+.actionBtn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--col-ca) 8%, var(--bg-card));
+  border-color: var(--col-ca);
+  color: var(--text);
+}
+
+.actionBtn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.hud {
+  position: absolute;
+  left: var(--space-4);
+  right: var(--space-4);
+  bottom: var(--space-4);
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+  pointer-events: none;
+  z-index: 5;
+}
+
+.hudBlock {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: rgba(7, 7, 18, 0.78);
+  border: 1px solid rgba(192, 132, 252, 0.24);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+}
+
+.hudTitle {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.hudSub {
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  color: var(--col-ca);
+}
+
+.hudActions {
+  pointer-events: auto;
+}
+
+.hudBtn {
+  background: rgba(7, 7, 18, 0.78);
+  border: 1px solid rgba(192, 132, 252, 0.24);
+  border-radius: var(--radius-md);
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: var(--space-2) var(--space-3);
+  transition: color var(--ease-fast), border-color var(--ease-fast), background var(--ease-fast);
+  box-shadow: var(--shadow-md);
+}
+
+.hudBtn:hover {
+  color: var(--col-ca);
+  border-color: var(--col-ca);
+  background: color-mix(in srgb, var(--col-ca) 10%, rgba(7, 7, 18, 0.78));
+}
+
+@media (max-width: 900px) {
+  .sidebar {
+    width: min(272px, calc(100vw - var(--space-8)));
+  }
+}

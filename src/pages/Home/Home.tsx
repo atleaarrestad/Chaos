@@ -76,6 +76,15 @@ const EXPLORATIONS: Exploration[] = [
     color: 'var(--col-conway)',
   },
   {
+    path: '/cellular-automata',
+    title: 'Cellular Automata',
+    category: 'Cellular Automaton',
+    description:
+      "Eleven rulesets — Langton's Ant, elementary 1D rules, Brian's Brain, and 2D outer-totalistic automata. Simple local rules, endlessly varied emergent behavior.",
+    previewType: 'cellular',
+    color: 'var(--col-ca)',
+  },
+  {
     path: '/three-body',
     title: 'Three Body Problem',
     category: 'N-Body',
