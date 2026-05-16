@@ -74,6 +74,15 @@ const EXPLORATIONS: Exploration[] = [
     symbol: '⬛',
     color: 'var(--col-conway)',
   },
+  {
+    path: '/three-body',
+    title: 'Three Body Problem',
+    category: 'N-Body',
+    description:
+      'Three massive bodies attracting each other through gravity. While the two-body problem is solvable, the three-body problem is generically chaotic — tiny changes in initial conditions lead to wildly different outcomes.',
+    symbol: '⊙',
+    color: 'var(--col-three-body)',
+  },
 ];
 
 export default function Home() {

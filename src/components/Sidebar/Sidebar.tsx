@@ -18,6 +18,7 @@ const NAV: NavSection[] = [
     items: [
       { path: '/lorenz',          label: 'Strange Attractors', symbol: '∿' },
       { path: '/double-pendulum', label: 'Double Pendulum',    symbol: 'g' },
+      { path: '/three-body',      label: 'Three Body Problem', symbol: '⊙' },
     ],
   },
   {
