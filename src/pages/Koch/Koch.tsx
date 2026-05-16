@@ -3,6 +3,7 @@ import {
   Slider, Toggle, SelectControl,
   ControlPanel, ControlGroup,
 } from '@/components/Controls';
+import { InfoDialog } from '@/components/InfoDialog';
 import {
   detectWebGL,
   createKochRenderer,
@@ -102,6 +103,7 @@ export default function Koch() {
   const dragRef = useRef<{ x: number; y: number } | null>(null);
   // Active preset tracking
   const [activePreset, setActivePreset] = useState<number>(0);
+  const [showInfo, setShowInfo] = useState(false);
 
   // Synchronously mirror state into a ref so the RAF loop always reads the
   // latest values without waiting for a useEffect to fire after paint.
@@ -455,8 +457,30 @@ export default function Koch() {
             <span className={styles.hudHint}>CPU</span>
           )}
           <span className={styles.hudHint}>scroll to zoom · drag to pan</span>
+          <button className={styles.infoBtn} onClick={() => setShowInfo(true)} title="About Koch snowflake">ⓘ</button>
         </div>
       </div>
+
+      {showInfo && (
+        <InfoDialog title="Koch Snowflake" onClose={() => setShowInfo(false)}>
+          <p>
+            Described by Helge von Koch in 1904. Each iteration replaces every line segment
+            with a smaller triangle bump. Zoom in and the same structure keeps reappearing.
+          </p>
+          <h3>Infinite perimeter, finite area</h3>
+          <p>
+            The perimeter grows by 4/3 each step and diverges to infinity, but the enclosed
+            area converges to 8/5 of the original triangle.
+          </p>
+          <h3>Controls</h3>
+          <ul>
+            <li><strong>Scroll:</strong> zoom</li>
+            <li><strong>Drag:</strong> pan</li>
+            <li><strong>Depth:</strong> number of iterations</li>
+            <li><strong>Sides:</strong> change the base polygon</li>
+          </ul>
+        </InfoDialog>
+      )}
     </div>
   );
 }

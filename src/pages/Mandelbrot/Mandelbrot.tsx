@@ -3,6 +3,7 @@ import {
   Slider, Toggle, SelectControl,
   ControlPanel, ControlGroup,
 } from '@/components/Controls';
+import { InfoDialog } from '@/components/InfoDialog';
 import type { PaletteId } from './mandelbrot.worker';
 import {
   detectWebGL, createWebGLRenderer,
@@ -127,6 +128,7 @@ export default function Mandelbrot() {
   // ── Animation state ────────────────────────────────────────────────────────
   const savingRef              = useRef(false);
   const [saving,         setSaving]         = useState(false);
+  const [showInfo,       setShowInfo]       = useState(false);
   const [animating,        setAnimating]        = useState(false);
   const [animMode,         setAnimMode]         = useState<'zoom' | 'julia' | 'both'>('zoom');
   const [animSpeed,        setAnimSpeed]        = useState(0.5);
@@ -1098,8 +1100,36 @@ export default function Mandelbrot() {
                 ? 'click to pick c · scroll to zoom · drag to pan'
                 : 'scroll to zoom · drag to pan'}
           </span>
+          <button className={styles.infoBtn} onClick={() => setShowInfo(true)} title="About the Mandelbrot set">ⓘ</button>
         </div>
       </div>
+
+      {showInfo && (
+        <InfoDialog title="Mandelbrot & Julia Sets" onClose={() => setShowInfo(false)}>
+          <p>
+            The <strong>Mandelbrot set</strong> is all complex numbers <em>c</em> where the
+            iteration z<sub>n+1</sub> = z<sub>n</sub>² + c stays bounded starting from z = 0.
+            Zoom in anywhere on the boundary and new detail keeps appearing.
+          </p>
+          <h3>Julia sets</h3>
+          <p>
+            Each point <em>c</em> has a corresponding <strong>Julia set</strong>. Points inside
+            the Mandelbrot set give connected Julia sets; points outside give fractal dust.
+            In Julia mode, click anywhere to pick <em>c</em>.
+          </p>
+          <h3>Colouring</h3>
+          <p>
+            Points outside the set are coloured by how quickly the iteration escapes. Smooth
+            colouring interpolates between escape counts to avoid hard bands.
+          </p>
+          <h3>Controls</h3>
+          <ul>
+            <li><strong>Scroll:</strong> zoom around the cursor</li>
+            <li><strong>Drag:</strong> pan</li>
+            <li><strong>Julia mode, click:</strong> pick the constant <em>c</em></li>
+          </ul>
+        </InfoDialog>
+      )}
     </div>
   );
 }

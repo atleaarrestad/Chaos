@@ -4,6 +4,7 @@ import {
   Slider, Toggle, SelectControl,
   ControlPanel, ControlGroup,
 } from '@/components/Controls';
+import { InfoDialog } from '@/components/InfoDialog';
 import { detectWebGL2 } from '@/lib/gpu/context';
 import styles from './DoublePendulum.module.css';
 import { DoublePendulumGPU, STEPS_PER_FRAME, type DoublePendulumParams, type ColorMode } from './double-pendulum-gpu';
@@ -41,13 +42,13 @@ const PRESETS = [
   },
   {
     label: 'Classic',
-    desc: 'Textbook chaos — equal arms, symmetric start',
+    desc: 'Equal arms, symmetric start',
     theta1: 120 * RAD, theta2: 120 * RAD, omega1: 0, omega2: 0,
     g: 9.81, l1: 1.0, l2: 1.0,
   },
   {
     label: 'Near Tip',
-    desc: 'Balanced near top — short inner arm sharpens the fall',
+    desc: 'Balanced near top, short inner arm sharpens the fall',
     theta1: 175 * RAD, theta2: 5 * RAD, omega1: 0, omega2: 0,
     g: 9.81, l1: 0.8, l2: 1.2,
   },
@@ -65,7 +66,7 @@ const PRESETS = [
   },
   {
     label: 'Freefall',
-    desc: 'Straight down, pure velocity — long outer arm for wider chaos',
+    desc: 'Straight down, pure velocity, long outer arm',
     theta1: 0, theta2: 0, omega1: 8, omega2: 0,
     g: 9.81, l1: 1.0, l2: 1.5,
   },
@@ -166,6 +167,7 @@ export default function DoublePendulum() {
   const [showEnsemble,  setShowEnsemble]  = useState(false);
   const [gpuAvailable,  setGpuAvailable]  = useState(false);
   const [activePreset,  setActivePreset]  = useState<number | null>(1); // 1 = Classic (matches defaults)
+  const [showInfo, setShowInfo] = useState(false);
 
   // ── Refs ────────────────────────────────────────────────────────────────────
   const canvasRef      = useRef<HTMLCanvasElement>(null);
@@ -824,8 +826,36 @@ export default function DoublePendulum() {
           <span className={styles.hudHint}>
             {running ? 'running' : 'paused'}
           </span>
+          <button className={styles.infoBtn} onClick={() => setShowInfo(true)} title="About the double pendulum">ⓘ</button>
         </div>
       </div>
+
+      {showInfo && (
+        <InfoDialog title="Double Pendulum" onClose={() => setShowInfo(false)}>
+          <p>
+            One pendulum hanging from the tip of another. Despite being fully deterministic,
+            tiny differences in the starting angle lead to completely different trajectories
+            within seconds.
+          </p>
+          <h3>Ensemble mode</h3>
+          <p>
+            Launches 16 384 pendulums with θ₁ distributed across a 0.01 rad window, so no
+            pendulum starts more than 0.005 rad from the center angle. They start as a tight
+            cluster and quickly scatter. The Spread slider (visible in ensemble mode) controls the window width.
+          </p>
+          <h3>Phase portrait</h3>
+          <p>
+            Plots angle θ₁ vs angular velocity ω₁ of the first rod. A regular pendulum makes
+            a closed loop; this one fills the space with a tangled mess.
+          </p>
+          <h3>Controls</h3>
+          <ul>
+            <li><strong>Angle sliders:</strong> set the starting angles</li>
+            <li><strong>Ensemble:</strong> show many pendulums at once</li>
+            <li><strong>Trail length:</strong> how much history is drawn</li>
+          </ul>
+        </InfoDialog>
+      )}
     </div>
   );
 }

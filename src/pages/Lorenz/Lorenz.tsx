@@ -4,6 +4,7 @@ import {
   Slider, Toggle, SelectControl,
   ControlPanel, ControlGroup,
 } from '@/components/Controls';
+import { InfoDialog } from '@/components/InfoDialog';
 import { detectWebGL2 } from '@/lib/gpu/context';
 import styles from './Lorenz.module.css';
 import { AttractorGPU, type AttractorGPUParams, type AttractorDerivFn } from './attractor-gpu';
@@ -186,7 +187,7 @@ const ATTRACTOR_CATALOGUE: AttractorTypeDef[] = [
   {
     id: 'halvorsen', name: 'Halvorsen',
     equations: ['dx/dt = −ax − 4y − 4z − y²', 'dy/dt = −ay − 4z − 4x − z²', 'dz/dt = −az − 4x − 4y − x²'],
-    description: 'Cyclically symmetric — all three variables are interchangeable under a 120° rotation.',
+    description: 'Cyclically symmetric. All three variables are interchangeable under a 120° rotation.',
     fn: (x, y, z, [a]) => [-a * x - 4 * y - 4 * z - y * y, -a * y - 4 * z - 4 * x - z * z, -a * z - 4 * x - 4 * y - x * x] as [number, number, number],
     dt: 0.005, warmupSteps: 10000, initPos: [1, 0, 0],
     center: [0, 0, 0], viewUnits: 22, maxSpeed: 80,
@@ -375,6 +376,7 @@ export default function Lorenz() {
   const [trailLength, setTrailLength] = useState(10_000);
   const [colorScheme, setColorScheme] = useState<ColorScheme>('velocity');
   const [running, setRunning] = useState(true);
+  const [showInfo, setShowInfo] = useState(false);
   const [showAxes, setShowAxes] = useState(false);
   const [autoRotate, setAutoRotate] = useState(false);
   const [showPoincare, setShowPoincare] = useState(false);
@@ -1330,6 +1332,7 @@ export default function Lorenz() {
         </div>
         <div className={styles.hudRight}>
           <span className={styles.hudHint}>drag to rotate</span>
+          <button className={styles.infoBtn} onClick={() => setShowInfo(true)} title="About strange attractors">ⓘ</button>
         </div>
       </div>
 
@@ -1382,6 +1385,33 @@ export default function Lorenz() {
             </div>
           )}
         </div>
+      )}
+
+      {showInfo && (
+        <InfoDialog title="Strange Attractors" onClose={() => setShowInfo(false)}>
+          <p>
+            A strange attractor is a fractal structure in phase space that a chaotic system
+            gravitates toward. Trajectories stay bounded but never repeat the same path.
+          </p>
+          <h3>Lorenz attractor</h3>
+          <p>
+            Edward Lorenz derived this in 1963 from a simplified weather model. The
+            butterfly-shaped orbit was the first strange attractor described and inspired
+            the term <strong>butterfly effect</strong>: tiny differences in starting conditions
+            grow into completely different outcomes.
+          </p>
+          <h3>Other attractors</h3>
+          <p>
+            Rössler, Aizawa, Thomas, and others each have their own differential equations
+            but the same core property: bounded, non-repeating orbits on a fractal set.
+          </p>
+          <h3>Controls</h3>
+          <ul>
+            <li><strong>Drag:</strong> rotate the 3D view</li>
+            <li><strong>+ Attractor:</strong> add a second trajectory to compare divergence</li>
+            <li><strong>Poincaré / Return map:</strong> cross-section analysis</li>
+          </ul>
+        </InfoDialog>
       )}
     </div>
   );

@@ -281,13 +281,32 @@
 .hudRight {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
+  gap: var(--space-3);
+  background: rgba(7, 7, 18, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-lg);
+  padding: var(--space-2) var(--space-3);
+  pointer-events: auto;
 }
 
 .hudHint {
   font-size: var(--text-xs);
-  color: rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.65);
 }
+
+.infoBtn {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+  border-radius: var(--radius-sm);
+  transition: color var(--ease-fast);
+}
+
+.infoBtn:hover { color: var(--col-mandelbrot); }
 
 /* ─── High-res save controls ─────────────────────────────────────────────── */
 

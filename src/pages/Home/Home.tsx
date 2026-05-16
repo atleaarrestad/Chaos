@@ -16,7 +16,7 @@ const EXPLORATIONS: Exploration[] = [
     title: 'Strange Attractors',
     category: 'Attractor',
     description:
-      'Six strange attractors — Lorenz, Rössler, Halvorsen, Thomas, Aizawa, Dadras. Each born from three equations yet producing infinitely complex, never-repeating orbits.',
+      'Six strange attractors: Lorenz, Rössler, Halvorsen, Thomas, Aizawa, Dadras. Each born from three equations yet producing infinitely complex, never-repeating orbits.',
     symbol: '∿',
     color: 'var(--col-lorenz)',
   },
@@ -52,7 +52,7 @@ const EXPLORATIONS: Exploration[] = [
     title: 'Koch Snowflake',
     category: 'Fractal',
     description:
-      'An infinite perimeter enclosing a finite area. Each edge of an equilateral triangle repeatedly sprouts smaller triangles — revealing self-similarity at every scale.',
+      'An infinite perimeter enclosing a finite area. Each edge of an equilateral triangle repeatedly sprouts smaller triangles, revealing self-similarity at every scale.',
     symbol: '❄',
     color: 'var(--col-koch)',
   },
@@ -70,7 +70,7 @@ const EXPLORATIONS: Exploration[] = [
     title: "Conway's Game of Life",
     category: 'Cellular Automaton',
     description:
-      'Zero-player game on an infinite grid. Four simple rules applied to cells — alive or dead — produce emergent complexity: oscillators, spaceships, and unbounded growth.',
+      'Zero-player game on an infinite grid. Four simple rules applied to cells (alive or dead) produce emergent complexity: oscillators, spaceships, and unbounded growth.',
     symbol: '⬛',
     color: 'var(--col-conway)',
   },
@@ -84,7 +84,7 @@ export default function Home() {
         <h1 className={styles.title}>Chaos &amp; Fractals</h1>
         <p className={styles.subtitle}>
           Visualize the beautiful complexity hidden in simple equations.
-          From strange attractors to infinite fractal boundaries — explore the mathematics of chaos.
+          From strange attractors to infinite fractal boundaries, explore the mathematics of chaos.
         </p>
       </header>
 

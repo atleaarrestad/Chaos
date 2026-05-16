@@ -3,6 +3,7 @@ import {
   Slider, Toggle, SelectControl,
   ControlPanel, ControlGroup,
 } from '@/components/Controls';
+import { InfoDialog } from '@/components/InfoDialog';
 import {
   detectWebGL,
   createWebGLRenderer,
@@ -29,12 +30,12 @@ interface Preset {
 }
 
 const PRESETS: Preset[] = [
-  { label: 'Full',     rMin: 2.5,    rMax: 4.0,    desc: 'r ∈ [2.5, 4] — full bifurcation diagram'         },
-  { label: 'Doubling', rMin: 2.8,    rMax: 3.6,    desc: 'r ∈ [2.8, 3.6] — period-doubling cascade'        },
-  { label: 'Chaos',    rMin: 3.5,    rMax: 4.0,    desc: 'r ∈ [3.5, 4] — onset of chaos'                   },
-  { label: '3-cycle',  rMin: 3.82,   rMax: 3.88,   desc: 'r ∈ [3.82, 3.88] — period-3 window'              },
-  { label: 'δ point',  rMin: 3.54,   rMax: 3.57,   desc: 'r ≈ 3.569 — Feigenbaum accumulation point'       },
-  { label: 'Deep',     rMin: 3.856,  rMax: 3.862,  desc: 'r ∈ [3.856, 3.862] — deep self-similar structure'},
+  { label: 'Full',     rMin: 2.5,    rMax: 4.0,    desc: 'r ∈ [2.5, 4], full bifurcation diagram'         },
+  { label: 'Doubling', rMin: 2.8,    rMax: 3.6,    desc: 'r ∈ [2.8, 3.6], period-doubling cascade'        },
+  { label: 'Chaos',    rMin: 3.5,    rMax: 4.0,    desc: 'r ∈ [3.5, 4], onset of chaos'                   },
+  { label: '3-cycle',  rMin: 3.82,   rMax: 3.88,   desc: 'r ∈ [3.82, 3.88], period-3 window'              },
+  { label: 'δ point',  rMin: 3.54,   rMax: 3.57,   desc: 'r ≈ 3.569, Feigenbaum accumulation point'       },
+  { label: 'Deep',     rMin: 3.856,  rMax: 3.862,  desc: 'r ∈ [3.856, 3.862], deep self-similar structure'},
 ];
 
 // ─── Axis helpers ─────────────────────────────────────────────────────────────
@@ -86,6 +87,7 @@ export default function Bifurcation() {
   const [colorScheme,  setColorScheme]  = useState<ColorScheme>('cyan');
   const [logScale,     setLogScale]     = useState(true);
   const [activePreset, setActivePreset] = useState<number | null>(0);
+  const [showInfo, setShowInfo] = useState(false);
   const [gpuAvailable, setGpuAvailable] = useState(false);
   const [useGPU,       setUseGPU]       = useState(false);
   const [zoomHistory,  setZoomHistory]  = useState<ZoomState[]>([]);
@@ -594,8 +596,35 @@ export default function Bifurcation() {
           <span className={styles.hudHint}>
             {activePreset !== null ? PRESETS[activePreset].desc : 'drag to zoom · scroll to zoom · logistic map x → r·x·(1−x)'}
           </span>
+          <button className={styles.infoBtn} onClick={() => setShowInfo(true)} title="About the bifurcation diagram">ⓘ</button>
         </div>
       </div>
+
+      {showInfo && (
+        <InfoDialog title="Bifurcation Diagram" onClose={() => setShowInfo(false)}>
+          <p>
+            Shows the long-term behaviour of the logistic map
+            x<sub>n+1</sub> = r·x<sub>n</sub>·(1−x<sub>n</sub>) as <em>r</em> varies from 0 to 4.
+          </p>
+          <h3>Period doubling</h3>
+          <p>
+            Low <em>r</em>: population settles on a fixed point. As <em>r</em> increases the
+            stable state splits into a 2-cycle, then 4, 8, 16… until around r ≈ 3.57 where
+            behaviour becomes fully chaotic.
+          </p>
+          <h3>Feigenbaum constant</h3>
+          <p>
+            The ratio between successive bifurcation intervals converges to
+            δ ≈ 4.669. This constant shows up in every smooth one-humped map, not just the logistic map.
+          </p>
+          <h3>Controls</h3>
+          <ul>
+            <li><strong>Drag a rectangle:</strong> zoom into any region</li>
+            <li><strong>Scroll:</strong> zoom around the cursor</li>
+            <li><strong>Back:</strong> undo the last zoom</li>
+          </ul>
+        </InfoDialog>
+      )}
     </div>
   );
 }

@@ -3,9 +3,8 @@ import {
   Slider, Toggle, SelectControl,
   ControlPanel, ControlGroup,
 } from '@/components/Controls';
+import { InfoDialog } from '@/components/InfoDialog';
 import styles from './Cardioid.module.css';
-
-// ─── Types ────────────────────────────────────────────────────────────────────
 
 type ColorScheme = 'cardioid' | 'rainbow' | 'plasma' | 'mono';
 
@@ -15,12 +14,12 @@ const BG  = '#0b0b18';
 const TAU = Math.PI * 2;
 
 const PRESETS = [
-  { label: 'Cardioid',  k: 2,         desc: 'k = 2 — one-cusped envelope' },
-  { label: 'Nephroid',  k: 3,         desc: 'k = 3 — two-cusped epicycloid' },
-  { label: 'Trefoil',   k: 4,         desc: 'k = 4 — three-cusped epicycloid' },
-  { label: '½',         k: 0.5,       desc: 'k = ½ — half-frequency pattern' },
-  { label: 'φ',         k: 1.6180339, desc: 'k = φ — golden ratio (non-repeating)' },
-  { label: 'e',         k: Math.E,    desc: 'k = e ≈ 2.718 — Euler\'s number' },
+  { label: 'Cardioid',  k: 2,         desc: 'k = 2, one-cusped envelope' },
+  { label: 'Nephroid',  k: 3,         desc: 'k = 3, two-cusped epicycloid' },
+  { label: 'Trefoil',   k: 4,         desc: 'k = 4, three-cusped epicycloid' },
+  { label: '½',         k: 0.5,       desc: 'k = ½, half-frequency pattern' },
+  { label: 'φ',         k: 1.6180339, desc: 'k = φ, golden ratio (non-repeating)' },
+  { label: 'e',         k: Math.E,    desc: 'k = e ≈ 2.718, Euler\'s number' },
 ] as const;
 
 // ─── Color helpers ────────────────────────────────────────────────────────────
@@ -63,6 +62,7 @@ export default function Cardioid() {
   const [showCircle,  setShowCircle]  = useState(true);
   const [showDots,    setShowDots]    = useState(false);
   const [activePreset, setActivePreset] = useState<number | null>(0);
+  const [showInfo, setShowInfo] = useState(false);
 
   // Mirror state to ref so animation loop always reads fresh values
   const pRef = useRef({
@@ -327,8 +327,35 @@ export default function Cardioid() {
           <span className={styles.hudHint}>
             {activePreset !== null ? PRESETS[activePreset].desc : 'times-table visualization'}
           </span>
+          <button className={styles.infoBtn} onClick={() => setShowInfo(true)} title="About the cardioid">ⓘ</button>
         </div>
       </div>
+
+      {showInfo && (
+        <InfoDialog title="Cardioid & Times Tables" onClose={() => setShowInfo(false)}>
+          <p>
+            Points are evenly spaced around a circle. For multiplier <em>k</em>, each point
+            <em> p</em> is connected by a line to point <em>p × k (mod n)</em>. The lines
+            form an envelope curve.
+          </p>
+          <h3>The cardioid</h3>
+          <p>
+            At <em>k = 2</em> the envelope is a perfect cardioid, the same heart-shaped curve
+            that forms the main bulb of the Mandelbrot set. It's the same underlying math.
+          </p>
+          <h3>Other multipliers</h3>
+          <p>
+            k = 3 gives a nephroid, k = 4 gives a three-cusped curve. Each integer multiplier
+            produces a different epicycloid.
+          </p>
+          <h3>Controls</h3>
+          <ul>
+            <li><strong>Points:</strong> number of points on the circle</li>
+            <li><strong>Multiplier:</strong> the factor <em>k</em></li>
+            <li><strong>Animate:</strong> sweep <em>k</em> to watch the shapes morph</li>
+          </ul>
+        </InfoDialog>
+      )}
     </div>
   );
 }
