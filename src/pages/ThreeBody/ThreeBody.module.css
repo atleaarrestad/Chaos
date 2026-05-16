@@ -13,6 +13,7 @@
   height: 100%;
   display: block;
   user-select: none;
+  cursor: grab;
 }
 
 /* ─── Floating sidebar ───────────────────────────────────────────────────── */
@@ -107,6 +108,38 @@
 .snapBtnActive {
   background: rgba(244, 63, 94, 0.15);
   border-color: var(--col-three-body);
+  color: var(--col-three-body);
+}
+
+/* ─── Preset description ─────────────────────────────────────────────────── */
+
+.presetDesc {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-subtle);
+  line-height: 1.5;
+}
+
+/* ─── Randomize button ───────────────────────────────────────────────────── */
+
+.randomizeBtn {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: background var(--ease-fast), color var(--ease-fast),
+    border-color var(--ease-fast);
+  text-align: center;
+}
+
+.randomizeBtn:hover {
+  background: rgba(244, 63, 94, 0.08);
+  border-color: rgba(244, 63, 94, 0.35);
   color: var(--col-three-body);
 }
 

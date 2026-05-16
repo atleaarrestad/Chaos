@@ -14,7 +14,6 @@ const BODY_RGB      = [[244, 63, 94], [56, 189, 248], [251, 191, 36]] as const;
 const MAX_TRAIL     = 10_000;   // ring-buffer size (x,y pairs) per body
 const EPS           = 0.008;   // gravitational softening radius (prevents div-by-zero)
 const BASE_STEPS    = 30;      // physics sub-steps per animation frame
-const TRAIL_BUCKETS = 30;      // alpha gradient segments for trail rendering
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -175,6 +174,7 @@ interface LiveParams {
   trailLen: number;
   showTrails: boolean;
   showVectors: boolean;
+  showCoM: boolean;
   G: number;
 }
 
@@ -191,6 +191,7 @@ export default function ThreeBody() {
   const [activePreset, setActivePreset] = useState<number | null>(0);
   const [showInfo,     setShowInfo]     = useState(false);
   const [selectedBody, setSelectedBody] = useState(0);
+  const [showCoM,      setShowCoM]      = useState(false);
   const [masses,       setMasses]       = useState<[number, number, number]>(
     PRESETS[0].bodies.map(b => b.mass) as [number, number, number]
   );
@@ -200,7 +201,7 @@ export default function ThreeBody() {
   const energyRef   = useRef<HTMLSpanElement>(null);
   const timeHudRef  = useRef<HTMLSpanElement>(null);
 
-  const bodiesRef   = useRef<Bodies>(JSON.parse(JSON.stringify(PRESETS[0].bodies)));
+  const bodiesRef   = useRef<Bodies>(structuredClone(PRESETS[0].bodies) as Bodies);
   const trailsRef   = useRef<Float32Array[]>([
     new Float32Array(MAX_TRAIL * 2),
     new Float32Array(MAX_TRAIL * 2),
@@ -213,11 +214,28 @@ export default function ThreeBody() {
   const simTime     = useRef(0);
   const initEnergy  = useRef<number | null>(null);
 
+  // Starfield — seeded once, stable across renders
+  const starsRef = useRef(
+    Array.from({ length: 150 }, () => ({
+      x:     Math.random(),
+      y:     Math.random(),
+      r:     Math.random() < 0.08 ? 1.1 : 0.55,
+      alpha: 0.15 + Math.random() * 0.55,
+    }))
+  );
+  const starCacheRef = useRef<OffscreenCanvas | null>(null);
+  // User camera overrides (pan in canvas physical px, zoom multiplier)
+  const userPanRef    = useRef({ x: 0, y: 0 });
+  const userZoomRef   = useRef(1.0);
+  const isDraggingRef = useRef(false);
+  const dragStartRef  = useRef({ x: 0, y: 0 });
+  const panAtDragRef  = useRef({ x: 0, y: 0 });
+
   // Stable ref for RAF loop access to latest live params
-  const pRef = useRef<LiveParams>({ running, speed, dt, trailLen, showTrails, showVectors, G });
+  const pRef = useRef<LiveParams>({ running, speed, dt, trailLen, showTrails, showVectors, showCoM, G });
   useEffect(() => {
-    pRef.current = { running, speed, dt, trailLen, showTrails, showVectors, G };
-  }, [running, speed, dt, trailLen, showTrails, showVectors, G]);
+    pRef.current = { running, speed, dt, trailLen, showTrails, showVectors, showCoM, G };
+  }, [running, speed, dt, trailLen, showTrails, showVectors, showCoM, G]);
 
   // Stable ref so resetSimulation callback stays stable
   const activePresetRef = useRef<number | null>(0);
@@ -247,6 +265,8 @@ export default function ThreeBody() {
     orbitBbox.current = { minX: minX - pad, maxX: maxX + pad, minY: minY - pad, maxY: maxY + pad };
     simTime.current    = 0;
     initEnergy.current = null;
+    userPanRef.current  = { x: 0, y: 0 };
+    userZoomRef.current = 1.0;
   };
 
   // ── Preset navigation ──────────────────────────────────────────────────────
@@ -258,7 +278,7 @@ export default function ThreeBody() {
     setG(preset.G);
     setMasses(preset.bodies.map(b => b.mass) as [number, number, number]);
     pRef.current = { ...pRef.current, dt: preset.dt, G: preset.G };
-    bodiesRef.current = JSON.parse(JSON.stringify(preset.bodies));
+    bodiesRef.current = structuredClone(preset.bodies) as Bodies;
     clearTrails();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -268,9 +288,28 @@ export default function ThreeBody() {
     const idx = activePresetRef.current;
     if (idx !== null) {
       const preset = PRESETS[idx];
-      bodiesRef.current = JSON.parse(JSON.stringify(preset.bodies));
+      bodiesRef.current = structuredClone(preset.bodies) as Bodies;
       pRef.current = { ...pRef.current, dt: preset.dt, G: preset.G };
     }
+    clearTrails();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Randomize ─────────────────────────────────────────────────────────────
+
+  const randomize = useCallback(() => {
+    const rand = () => (Math.random() - 0.5) * 4;
+    const newBodies: Bodies = [
+      { x: rand(), y: rand(), vx: rand() * 0.5, vy: rand() * 0.5, mass: 0.5 + Math.random() * 1.5 },
+      { x: rand(), y: rand(), vx: rand() * 0.5, vy: rand() * 0.5, mass: 0.5 + Math.random() * 1.5 },
+      { x: rand(), y: rand(), vx: rand() * 0.5, vy: rand() * 0.5, mass: 0.5 + Math.random() * 1.5 },
+    ];
+    // Zero total momentum and centre of mass
+    let totalM = 0, pvx = 0, pvy = 0, rcx = 0, rcy = 0;
+    for (const b of newBodies) { totalM += b.mass; pvx += b.mass * b.vx; pvy += b.mass * b.vy; rcx += b.mass * b.x; rcy += b.mass * b.y; }
+    for (const b of newBodies) { b.vx -= pvx / totalM; b.vy -= pvy / totalM; b.x -= rcx / totalM; b.y -= rcy / totalM; }
+    bodiesRef.current = newBodies;
+    setMasses(newBodies.map(b => b.mass) as [number, number, number]);
+    setActivePreset(null);
     clearTrails();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -292,7 +331,7 @@ export default function ThreeBody() {
     const canvas = canvasRef.current;
     if (!canvas) { rafRef.current = requestAnimationFrame(draw); return; }
 
-    const ctx = canvas.getContext('2d')!;
+    const ctx = canvas.getContext('2d', { alpha: false })!;
     const W = canvas.width, H = canvas.height;
     const p = pRef.current;
 
@@ -353,17 +392,33 @@ export default function ThreeBody() {
     viewScale.current += (clampedTarget - viewScale.current) * 0.05;
     const scale = viewScale.current;
 
-    const toX = (x: number) => W / 2 + (x - cx) * scale;
-    const toY = (y: number) => H / 2 - (y - cy) * scale;
+    const zoom = userZoomRef.current;
+    const pan  = userPanRef.current;
+    const toX = (x: number) => W / 2 + (x - cx) * scale * zoom + pan.x;
+    const toY = (y: number) => H / 2 - (y - cy) * scale * zoom + pan.y;
 
     // ── Clear ─────────────────────────────────────────────────────────────────
     ctx.fillStyle = BG;
     ctx.fillRect(0, 0, W, H);
 
-    // ── Trails ────────────────────────────────────────────────────────────────
+    // ── Starfield (cached OffscreenCanvas — only rebuilt on resize) ─────────────
+    if (!starCacheRef.current || starCacheRef.current.width !== W || starCacheRef.current.height !== H) {
+      const oc = new OffscreenCanvas(W, H);
+      const octx = oc.getContext('2d')!;
+      for (const star of starsRef.current) {
+        octx.beginPath();
+        octx.arc(star.x * W, star.y * H, star.r, 0, Math.PI * 2);
+        octx.fillStyle = `rgba(255,255,255,${star.alpha.toFixed(2)})`;
+        octx.fill();
+      }
+      starCacheRef.current = oc;
+    }
+    ctx.drawImage(starCacheRef.current, 0, 0);
+
+    // ── Trails — 2 passes per body (6 draw calls total vs 90 previously) ─────────
     if (p.showTrails) {
-      ctx.lineCap  = 'round';
-      ctx.lineJoin = 'round';
+      ctx.lineCap  = 'butt';
+      ctx.lineJoin = 'miter';
 
       for (let bi = 0; bi < 3; bi++) {
         const trail = trailsRef.current[bi];
@@ -372,29 +427,46 @@ export default function ThreeBody() {
         const count = Math.min(total, p.trailLen);
         if (count < 2) continue;
 
-        const [r, g, bc] = BODY_RGB[bi];
-        const bucketSize  = Math.max(1, Math.ceil(count / TRAIL_BUCKETS));
+        // Split trail: old faded history + bright recent tip
+        const RECENT   = Math.min(600, Math.max(2, Math.floor(count * 0.12)));
+        const histEnd  = count - RECENT;
+        // Downsample old history to ≤1 500 points so path building stays cheap
+        const histStep = histEnd > 0 ? Math.max(1, Math.floor(histEnd / 1500)) : 1;
 
-        for (let bucket = 0; bucket < TRAIL_BUCKETS; bucket++) {
-          const segStart = bucket * bucketSize;
-          const segEnd   = Math.min(segStart + bucketSize, count - 1);
-          if (segEnd <= segStart) break;
-
-          const t = (bucket + 0.5) / TRAIL_BUCKETS;
-          ctx.strokeStyle = `rgba(${r},${g},${bc},${(t * 0.88).toFixed(3)})`;
-          ctx.lineWidth   = 1.0 + t * 0.8;
-
+        // Pass 1: downsampled full history — faded out
+        if (histEnd > 1) {
           ctx.beginPath();
-          for (let i = segStart; i <= segEnd; i++) {
+          let first = true;
+          for (let i = 0; i < histEnd; i += histStep) {
             const si = ((head - count + i + MAX_TRAIL) % MAX_TRAIL) * 2;
-            const px = toX(trail[si]);
-            const py = toY(trail[si + 1]);
-            if (i === segStart) ctx.moveTo(px, py);
-            else                ctx.lineTo(px, py);
+            const px = toX(trail[si]), py = toY(trail[si + 1]);
+            if (first) { ctx.moveTo(px, py); first = false; }
+            else        ctx.lineTo(px, py);
           }
+          // Connect to where pass 2 begins
+          const si2 = ((head - count + histEnd + MAX_TRAIL) % MAX_TRAIL) * 2;
+          ctx.lineTo(toX(trail[si2]), toY(trail[si2 + 1]));
+          ctx.strokeStyle = BODY_COLORS[bi];
+          ctx.globalAlpha = 0.22;
+          ctx.lineWidth   = 0.9;
           ctx.stroke();
         }
+
+        // Pass 2: recent tip — full brightness
+        ctx.beginPath();
+        let first2 = true;
+        for (let i = Math.max(0, histEnd - 1); i < count; i++) {
+          const si = ((head - count + i + MAX_TRAIL) % MAX_TRAIL) * 2;
+          const px = toX(trail[si]), py = toY(trail[si + 1]);
+          if (first2) { ctx.moveTo(px, py); first2 = false; }
+          else         ctx.lineTo(px, py);
+        }
+        ctx.strokeStyle = BODY_COLORS[bi];
+        ctx.globalAlpha = 0.90;
+        ctx.lineWidth   = 1.3;
+        ctx.stroke();
       }
+      ctx.globalAlpha = 1;
     }
 
     // ── Velocity vectors ───────────────────────────────────────────────────────
@@ -420,7 +492,7 @@ export default function ThreeBody() {
     for (let bi = 0; bi < 3; bi++) {
       const b   = bodies[bi];
       const px  = toX(b.x), py = toY(b.y);
-      const r   = 6 * Math.cbrt(b.mass);
+      const r   = 18 * Math.cbrt(b.mass);
       const [cr, cg, cb] = BODY_RGB[bi];
 
       // Soft radial glow
@@ -433,20 +505,33 @@ export default function ThreeBody() {
       ctx.fillStyle = grd;
       ctx.fill();
 
-      // Core body with shadow glow
-      ctx.shadowColor = BODY_COLORS[bi];
-      ctx.shadowBlur  = 18;
+      // Core body (radial gradient above already provides the glow)
       ctx.beginPath();
       ctx.arc(px, py, r, 0, Math.PI * 2);
       ctx.fillStyle = BODY_COLORS[bi];
       ctx.fill();
-      ctx.shadowBlur = 0;
 
       // Specular highlight
       ctx.beginPath();
       ctx.arc(px - r * 0.3, py - r * 0.32, r * 0.25, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(255,255,255,0.55)';
       ctx.fill();
+    }
+
+    // ── Centre of mass crosshair ───────────────────────────────────────────────
+    if (p.showCoM) {
+      const comX = toX(cx), comY = toY(cy);
+      const s = 9;
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+      ctx.lineWidth   = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(comX - s, comY); ctx.lineTo(comX + s, comY);
+      ctx.moveTo(comX, comY - s); ctx.lineTo(comX, comY + s);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
     }
 
     rafRef.current = requestAnimationFrame(draw);
@@ -468,6 +553,72 @@ export default function ThreeBody() {
     });
     ro.observe(canvas);
     return () => ro.disconnect();
+  }, []);
+
+  // ── Keyboard shortcuts ────────────────────────────────────────────────────────
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.code === 'Space') { e.preventDefault(); setRunning(r => !r); }
+      if (e.code === 'KeyR')  { e.preventDefault(); resetSimulation(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [resetSimulation]);
+
+  // ── Canvas pan & zoom ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const onMouseDown = (e: MouseEvent) => {
+      isDraggingRef.current = true;
+      dragStartRef.current  = { x: e.clientX, y: e.clientY };
+      panAtDragRef.current  = { ...userPanRef.current };
+      canvas.style.cursor   = 'grabbing';
+    };
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isDraggingRef.current) return;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      userPanRef.current = {
+        x: panAtDragRef.current.x + (e.clientX - dragStartRef.current.x) * dpr,
+        y: panAtDragRef.current.y + (e.clientY - dragStartRef.current.y) * dpr,
+      };
+    };
+    const onMouseUp = () => {
+      isDraggingRef.current = false;
+      canvas.style.cursor   = 'grab';
+    };
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+      const rect   = canvas.getBoundingClientRect();
+      const dpr    = Math.min(window.devicePixelRatio || 1, 2);
+      const mx     = (e.clientX - rect.left) * dpr;
+      const my     = (e.clientY - rect.top)  * dpr;
+      const W      = canvas.width;
+      const H      = canvas.height;
+      const px     = userPanRef.current.x;
+      const py     = userPanRef.current.y;
+      // Zoom around the cursor: keep the world point under the cursor fixed
+      userZoomRef.current *= factor;
+      userPanRef.current   = {
+        x: (mx - W / 2) * (1 - factor) + px * factor,
+        y: (my - H / 2) * (1 - factor) + py * factor,
+      };
+    };
+
+    canvas.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup',   onMouseUp);
+    canvas.addEventListener('wheel', onWheel, { passive: false });
+
+    return () => {
+      canvas.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup',   onMouseUp);
+      canvas.removeEventListener('wheel', onWheel);
+    };
   }, []);
 
   // ── Render ────────────────────────────────────────────────────────────────────
@@ -495,6 +646,13 @@ export default function ThreeBody() {
                   </button>
                 ))}
               </div>
+              {activePreset !== null
+                ? <p className={styles.presetDesc}>{PRESETS[activePreset].desc}</p>
+                : <p className={styles.presetDesc}>Custom configuration</p>
+              }
+              <button className={styles.randomizeBtn} type="button" onClick={randomize}>
+                Randomize
+              </button>
               <div className={styles.legend}>
                 {BODY_COLORS.map((col, i) => (
                   <span key={i} className={styles.legendItem}>
@@ -582,6 +740,11 @@ export default function ThreeBody() {
                 value={showVectors} onChange={setShowVectors}
                 description="Show velocity arrow on each body"
               />
+              <Toggle
+                label="Centre of mass"
+                value={showCoM} onChange={setShowCoM}
+                description="Show centre-of-mass crosshair"
+              />
             </ControlGroup>
           </ControlPanel>
 
@@ -602,7 +765,7 @@ export default function ThreeBody() {
         </div>
         <div className={styles.hudRight}>
           <span className={styles.hudHint} ref={energyRef} />
-          <span className={styles.hudHint}>{running ? 'running' : 'paused'}</span>
+          <span className={styles.hudHint}>{running ? 'running' : 'paused'} · Space / R</span>
           <button
             className={styles.infoBtn}
             onClick={() => setShowInfo(true)}
