@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   ControlGroup, ControlPanel, SimControls, Slider, Toggle,
 } from '@/components/Controls';
 import { InfoDialog } from '@/components/InfoDialog';
 import { useFullscreen } from '@/hooks/useFullscreen';
+import { getNumParam } from '@/hooks/useUrlParams';
 import ExportDialog from '../../components/ExportDialog/ExportDialog';
 import { exportImage } from '../../lib/exportImage';
 import { ReactionDiffusionGPU, SIM_W, SIM_H } from './reaction-diffusion-gpu';
@@ -22,38 +24,39 @@ interface Preset {
   k: number;
   Du: number;
   Dv: number;
+  scattered: boolean;
 }
 
 const PRESETS: Preset[] = [
   {
     label: 'Spots',
     desc:  'Isolated spots / pearls form and stabilise - a Turing instability in its simplest form.',
-    f: 0.035, k: 0.065, Du: 0.2097, Dv: 0.105,
+    f: 0.035, k: 0.065, Du: 0.2097, Dv: 0.105, scattered: false,
   },
   {
     label: 'Fingerprints',
     desc:  'Dense interlocking stripes reminiscent of fingerprint ridges or zebra-fish markings.',
-    f: 0.037, k: 0.060, Du: 0.2097, Dv: 0.105,
+    f: 0.037, k: 0.060, Du: 0.2097, Dv: 0.105, scattered: false,
   },
   {
     label: 'Coral',
     desc:  'Branching coral-like tendrils grow outward from each seed, splitting as they expand.',
-    f: 0.062, k: 0.061, Du: 0.2097, Dv: 0.105,
+    f: 0.062, k: 0.061, Du: 0.2097, Dv: 0.105, scattered: true,
   },
   {
     label: 'Mitosis',
     desc:  'Each spot pinches in two and the daughter spots repeat - a model of cell division.',
-    f: 0.028, k: 0.053, Du: 0.2097, Dv: 0.105,
+    f: 0.028, k: 0.053, Du: 0.2097, Dv: 0.105, scattered: false,
   },
   {
     label: 'Maze',
     desc:  'Thin, winding walls fill the space with an intricate corridor-like maze.',
-    f: 0.029, k: 0.057, Du: 0.2097, Dv: 0.105,
+    f: 0.029, k: 0.057, Du: 0.2097, Dv: 0.105, scattered: true,
   },
   {
     label: 'Worms',
     desc:  'Long, slowly writhing worm-like stripes meander across the field.',
-    f: 0.058, k: 0.065, Du: 0.2097, Dv: 0.105,
+    f: 0.058, k: 0.065, Du: 0.2097, Dv: 0.105, scattered: true,
   },
 ];
 
@@ -85,7 +88,7 @@ function buildInitial(preset: Preset): { u: Float32Array; v: Float32Array } {
   const cx = SIM_W >> 1;
   const cy = SIM_H >> 1;
 
-  if (preset.label === 'Coral' || preset.label === 'Maze' || preset.label === 'Worms') {
+  if (preset.scattered) {
     // Scatter many small seeds
     const n = 40 + Math.round(Math.random() * 20);
     for (let i = 0; i < n; i++) {
@@ -119,24 +122,28 @@ interface LiveParams {
   stepsFrame: number;
   brushSize:  number;
   showGrid:   boolean;
+  eraseMode:  boolean;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function ReactionDiffusion() {
-  const [activePreset,  setActivePreset]  = useState(0);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const [activePreset,  setActivePreset]  = useState(() => getNumParam(searchParams, 'preset', 0) | 0);
   const [running,       setRunning]       = useState(true);
-  const [f,             setF]             = useState(PRESETS[0].f);
-  const [k,             setK]             = useState(PRESETS[0].k);
-  const [Du,            setDu]            = useState(PRESETS[0].Du);
-  const [Dv,            setDv]            = useState(PRESETS[0].Dv);
-  const [stepsFrame,    setStepsFrame]    = useState(8);
+  const [f,             setF]             = useState(() => getNumParam(searchParams, 'f',     PRESETS[0].f));
+  const [k,             setK]             = useState(() => getNumParam(searchParams, 'k',     PRESETS[0].k));
+  const [Du,            setDu]            = useState(() => getNumParam(searchParams, 'du',    PRESETS[0].Du));
+  const [Dv,            setDv]            = useState(() => getNumParam(searchParams, 'dv',    PRESETS[0].Dv));
+  const [stepsFrame,    setStepsFrame]    = useState(() => getNumParam(searchParams, 'steps', 8) | 0);
   const [brushSize,     setBrushSize]     = useState(6);
   const [showInfo,      setShowInfo]      = useState(false);
   const [showExport,    setShowExport]    = useState(false);
   const [generation,    setGeneration]    = useState(0);
   const [showGrid,      setShowGrid]      = useState(false);
   const [gpuError,      setGpuError]      = useState<string | null>(null);
+  const [eraseMode,     setEraseMode]     = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef    = useRef<HTMLCanvasElement>(null);
@@ -144,15 +151,30 @@ export default function ReactionDiffusion() {
 
   const rafRef     = useRef(0);
   const genRef     = useRef(0);
-  const pRef       = useRef<LiveParams>({ running, f, k, Du, Dv, stepsFrame, brushSize, showGrid });
+  const pRef       = useRef<LiveParams>({ running, f, k, Du, Dv, stepsFrame, brushSize, showGrid, eraseMode });
   const isPainting = useRef(false);
+  const isErasing  = useRef(false);
+  const initPresetRef  = useRef(activePreset);
 
   const { isFullscreen, toggleFullscreen } = useFullscreen(containerRef);
 
   // Sync live params ref
   useEffect(() => {
-    pRef.current = { running, f, k, Du, Dv, stepsFrame, brushSize, showGrid };
-  }, [running, f, k, Du, Dv, stepsFrame, brushSize, showGrid]);
+    pRef.current = { running, f, k, Du, Dv, stepsFrame, brushSize, showGrid, eraseMode };
+  }, [running, f, k, Du, Dv, stepsFrame, brushSize, showGrid, eraseMode]);
+
+  // Persist params to URL (replace so no extra history entries)
+  useEffect(() => {
+    setSearchParams(sp => {
+      sp.set('f',      f.toFixed(4));
+      sp.set('k',      k.toFixed(4));
+      sp.set('du',     Du.toFixed(4));
+      sp.set('dv',     Dv.toFixed(4));
+      sp.set('steps',  String(stepsFrame));
+      sp.set('preset', String(activePreset));
+      return sp;
+    }, { replace: true });
+  }, [f, k, Du, Dv, stepsFrame, activePreset, setSearchParams]);
 
   // ── RAF loop (initialises GPU + runs simulation) ────────────────────────────
   useEffect(() => {
@@ -161,7 +183,8 @@ export default function ReactionDiffusion() {
 
     let gpu: ReactionDiffusionGPU;
     try {
-      const { u: initU, v: initV } = buildInitial(PRESETS[0]);
+      const safeIdx = Math.max(0, Math.min(initPresetRef.current, PRESETS.length - 1));
+      const { u: initU, v: initV } = buildInitial(PRESETS[safeIdx]);
       gpu = new ReactionDiffusionGPU(initU, initV);
       gpuRef.current = gpu;
     } catch (e) {
@@ -278,22 +301,29 @@ export default function ReactionDiffusion() {
     };
   }
 
-  function paint(canvas: HTMLCanvasElement, clientX: number, clientY: number) {
+  function doPaint(canvas: HTMLCanvasElement, clientX: number, clientY: number) {
     const gpu = gpuRef.current;
     if (!gpu) return;
     const { sx, sy } = canvasToSim(canvas, clientX, clientY);
-    gpu.seedAt(sx, sy, pRef.current.brushSize);
+    if (isErasing.current) {
+      gpu.eraseAt(sx, sy, pRef.current.brushSize);
+    } else {
+      gpu.seedAt(sx, sy, pRef.current.brushSize);
+    }
   }
 
   function onPointerDown(e: React.PointerEvent<HTMLCanvasElement>) {
+    e.preventDefault();
     isPainting.current = true;
+    // Right-click inverts the current mode; left-click uses the mode toggle
+    isErasing.current = e.button === 2 ? !pRef.current.eraseMode : pRef.current.eraseMode;
     (e.target as HTMLCanvasElement).setPointerCapture(e.pointerId);
-    paint(e.currentTarget, e.clientX, e.clientY);
+    doPaint(e.currentTarget, e.clientX, e.clientY);
   }
 
   function onPointerMove(e: React.PointerEvent<HTMLCanvasElement>) {
     if (!isPainting.current) return;
-    paint(e.currentTarget, e.clientX, e.clientY);
+    doPaint(e.currentTarget, e.clientX, e.clientY);
   }
 
   function onPointerUp() {
@@ -322,6 +352,7 @@ export default function ReactionDiffusion() {
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerLeave={onPointerUp}
+        onContextMenu={e => e.preventDefault()}
       />
 
       {/* ── Sidebar ────────────────────────────────────────────────────────── */}
@@ -359,6 +390,7 @@ export default function ReactionDiffusion() {
               <Slider label="Steps / frame" value={stepsFrame} onChange={v => setStepsFrame(v)} min={1} max={48} step={1} />
               <Slider label="Brush size"    value={brushSize}  onChange={v => setBrushSize(v)}  min={2} max={20} step={1} />
               <Toggle label="Grid overlay"  value={showGrid}   onChange={setShowGrid} />
+              <Toggle label="Erase mode"    value={eraseMode}  onChange={setEraseMode} />
             </ControlGroup>
           </ControlPanel>
 
@@ -381,7 +413,9 @@ export default function ReactionDiffusion() {
           <span className={styles.hudSub}>gen {generation.toLocaleString()}</span>
         </div>
         <div className={styles.hudRight}>
-          <span className={styles.hudHint}>click / drag to seed</span>
+          <span className={styles.hudHint}>
+            {eraseMode ? 'drag to erase · right-click to seed' : 'drag to seed · right-click to erase'}
+          </span>
           <button className={styles.infoBtn} onClick={() => setShowInfo(true)} title="About">ℹ</button>
           <button className={styles.hudBtn}  onClick={toggleFullscreen} title="Fullscreen (F)">
             {isFullscreen ? '⤡' : '⤢'}

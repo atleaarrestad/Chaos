@@ -285,6 +285,36 @@ export class ReactionDiffusionGPU {
     // ping unchanged — no ping-pong flip needed
   }
 
+  /**
+   * Erase activator at simulation pixel (sx, sy) — resets the region to the
+   * resting state (u=1, v=0) so the area becomes a blank canvas again.
+   */
+  eraseAt(sx: number, sy: number, radius: number): void {
+    const gl  = this.gl;
+    const r   = Math.ceil(radius);
+    const r2  = radius * radius;
+    const buf = this.seedScratch;
+
+    for (const tex of [this.texA, this.texB]) {
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      for (let dy = -r; dy <= r; dy++) {
+        const rowY = sy + dy;
+        if (rowY < 0 || rowY >= SIM_H) continue;
+        const hw = Math.floor(Math.sqrt(Math.max(0, r2 - dy * dy)));
+        const x0 = Math.max(0, sx - hw);
+        const x1 = Math.min(SIM_W - 1, sx + hw);
+        const w  = x1 - x0 + 1;
+        if (w <= 0) continue;
+        for (let i = 0; i < w; i++) {
+          buf[i * 2]     = 1.0; // u = 1 (inhibitor)
+          buf[i * 2 + 1] = 0.0; // v = 0 (no activator)
+        }
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, x0, rowY, w, 1, gl.RG, gl.FLOAT, buf);
+      }
+      gl.bindTexture(gl.TEXTURE_2D, null);
+    }
+  }
+
   /** Upload new initial state to both textures and reset ping-pong. */
   reset(initialU: Float32Array, initialV: Float32Array): void {
     const gl = this.gl;
