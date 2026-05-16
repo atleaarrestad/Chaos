@@ -492,7 +492,7 @@ export default function ThreeBody() {
     for (let bi = 0; bi < 3; bi++) {
       const b   = bodies[bi];
       const px  = toX(b.x), py = toY(b.y);
-      const r   = 18 * Math.cbrt(b.mass);
+      const r   = Math.max(4, 18 * Math.cbrt(b.mass) * scale * zoom / 200);
       const [cr, cg, cb] = BODY_RGB[bi];
 
       // Soft radial glow
