@@ -478,15 +478,36 @@ export default function ThreeBody() {
       ctx.lineCap     = 'round';
       ctx.globalAlpha = 0.8;
       for (let bi = 0; bi < 3; bi++) {
-        const b  = bodies[bi];
-        const px = toX(b.x), py = toY(b.y);
-        const ex = toX(b.x + b.vx * 0.3);
-        const ey = toY(b.y + b.vy * 0.3);
-        ctx.strokeStyle = BODY_COLORS[bi];
+        const b   = bodies[bi];
+        const px  = toX(b.x), py  = toY(b.y);
+        const ex  = toX(b.x + b.vx * 0.3);
+        const ey  = toY(b.y + b.vy * 0.3);
+        const dx  = ex - px, dy = ey - py;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        if (len < 2) continue; // skip negligible vectors
+
+        const color = BODY_COLORS[bi];
+        ctx.strokeStyle = color;
+        ctx.fillStyle   = color;
+
+        // Shaft (stops short of arrowhead base)
+        const HEAD = Math.min(10, len * 0.35); // arrowhead size in px
+        const ux = dx / len, uy = dy / len;    // unit direction
+        const bx = ex - ux * HEAD, by = ey - uy * HEAD; // arrowhead base
+
         ctx.beginPath();
         ctx.moveTo(px, py);
-        ctx.lineTo(ex, ey);
+        ctx.lineTo(bx, by);
         ctx.stroke();
+
+        // Filled arrowhead triangle
+        const wx = -uy * HEAD * 0.4, wy = ux * HEAD * 0.4; // wing offset
+        ctx.beginPath();
+        ctx.moveTo(ex, ey);
+        ctx.lineTo(bx + wx, by + wy);
+        ctx.lineTo(bx - wx, by - wy);
+        ctx.closePath();
+        ctx.fill();
       }
       ctx.globalAlpha = 1;
     }
