@@ -194,8 +194,8 @@ export default function ThreeBody() {
   ]);
   const trailHeads  = useRef([0, 0, 0]);
   const trailCounts = useRef([0, 0, 0]);
-  const viewScale     = useRef(200.0);
-  const smoothRefDist = useRef(1.0);   // slow-EMA of median body distance — prevents bouncy zoom
+  const viewScale = useRef(200.0);
+  const orbitBbox = useRef({ minX: -1, maxX: 1, minY: -1, maxY: 1 }); // grows with trail history
   const simTime     = useRef(0);
   const initEnergy  = useRef<number | null>(null);
 
@@ -211,24 +211,26 @@ export default function ThreeBody() {
 
   // ── Trail / sim helpers ────────────────────────────────────────────────────
 
-  // Median body distance from CoM — used to seed the camera on preset load
-  const medianDistFromCoM = (bodies: Body[]) => {
-    let totalMass = 0, cx = 0, cy = 0;
-    for (const b of bodies) { totalMass += b.mass; cx += b.x * b.mass; cy += b.y * b.mass; }
-    cx /= totalMass; cy /= totalMass;
-    const dists = bodies.map(b => Math.sqrt((b.x - cx) ** 2 + (b.y - cy) ** 2));
-    dists.sort((a, b) => a - b);
-    return Math.max(dists[1], 0.4);
-  };
+  // ── Trail ring buffer + clear ──────────────────────────────────────────────
 
-  const clearTrails = (initRefDist = 1.0) => {
+  const clearTrails = () => {
     for (let i = 0; i < 3; i++) {
       trailsRef.current[i].fill(0);
       trailHeads.current[i]  = 0;
       trailCounts.current[i] = 0;
     }
-    viewScale.current     = 200;
-    smoothRefDist.current = initRefDist;
+    viewScale.current  = 200;
+    // Seed bbox from initial body positions so camera starts at the right zoom immediately
+    const bodies = bodiesRef.current;
+    let minX = bodies[0].x, maxX = bodies[0].x;
+    let minY = bodies[0].y, maxY = bodies[0].y;
+    for (const b of bodies) {
+      minX = Math.min(minX, b.x); maxX = Math.max(maxX, b.x);
+      minY = Math.min(minY, b.y); maxY = Math.max(maxY, b.y);
+    }
+    // Add padding so a single-point start isn't degenerate
+    const pad = Math.max((maxX - minX) * 0.5, (maxY - minY) * 0.5, 0.5);
+    orbitBbox.current = { minX: minX - pad, maxX: maxX + pad, minY: minY - pad, maxY: maxY + pad };
     simTime.current    = 0;
     initEnergy.current = null;
   };
@@ -242,7 +244,7 @@ export default function ThreeBody() {
     setG(preset.G);
     pRef.current = { ...pRef.current, dt: preset.dt, G: preset.G };
     bodiesRef.current = JSON.parse(JSON.stringify(preset.bodies));
-    clearTrails(medianDistFromCoM(bodiesRef.current));
+    clearTrails();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Reset ──────────────────────────────────────────────────────────────────
@@ -254,7 +256,7 @@ export default function ThreeBody() {
       bodiesRef.current = JSON.parse(JSON.stringify(preset.bodies));
       pRef.current = { ...pRef.current, dt: preset.dt, G: preset.G };
     }
-    clearTrails(medianDistFromCoM(bodiesRef.current));
+    clearTrails();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Main RAF draw loop ─────────────────────────────────────────────────────
@@ -275,7 +277,7 @@ export default function ThreeBody() {
         simTime.current  += p.dt;
       }
 
-      // Record one trail point per body per frame
+      // Record one trail point per body per frame; expand orbit bbox for stable camera
       for (let i = 0; i < 3; i++) {
         const b    = bodiesRef.current[i];
         const head = trailHeads.current[i];
@@ -283,6 +285,11 @@ export default function ThreeBody() {
         trailsRef.current[i][head * 2 + 1] = b.y;
         trailHeads.current[i]  = (head + 1) % MAX_TRAIL;
         trailCounts.current[i] = Math.min(trailCounts.current[i] + 1, MAX_TRAIL);
+        const bb = orbitBbox.current;
+        if (b.x < bb.minX) bb.minX = b.x;
+        if (b.x > bb.maxX) bb.maxX = b.x;
+        if (b.y < bb.minY) bb.minY = b.y;
+        if (b.y > bb.maxY) bb.maxY = b.y;
       }
 
       // Energy HUD (imperative update — no re-render needed)
@@ -302,23 +309,21 @@ export default function ThreeBody() {
 
     const bodies = bodiesRef.current;
 
-    // ── Camera: CoM + adaptive scale ──────────────────────────────────────────
+    // ── Camera: CoM-centered, bbox-fitted scale ────────────────────────────────
+    // Scale is derived from the bounding box of all trail history, which only grows.
+    // For a periodic orbit (figure-8, Lagrange) the bbox stabilises after one period
+    // and the camera becomes completely still. For chaotic orbits it grows as needed.
     let totalMass = 0, cx = 0, cy = 0;
     for (const b of bodies) { totalMass += b.mass; cx += b.x * b.mass; cy += b.y * b.mass; }
     cx /= totalMass; cy /= totalMass;
 
-    // Sort body distances; use median distance so an escaping body doesn't collapse the view.
-    // Use a running max with very slow decay rather than EMA: the camera zooms out immediately
-    // when bodies expand but shrinks back only over many seconds. This makes periodic orbits
-    // (e.g. figure-8) produce a completely stable view — the max is hit once and held.
-    const dists = bodies.map(b => Math.sqrt((b.x - cx) ** 2 + (b.y - cy) ** 2));
-    dists.sort((a, b) => a - b);
-    const rawRefDist = Math.max(dists[1], 0.4);
-    smoothRefDist.current = Math.max(rawRefDist, smoothRefDist.current * 0.9997);
-
-    const targetScale = Math.min(W, H) * 0.42 / smoothRefDist.current;
+    const bb = orbitBbox.current;
+    const spanX = Math.max(bb.maxX - bb.minX, 0.8);
+    const spanY = Math.max(bb.maxY - bb.minY, 0.8);
+    const halfSpan = Math.max(spanX, spanY) / 2;
+    const targetScale = Math.min(W, H) * 0.40 / halfSpan;
     const clampedTarget = Math.max(10, Math.min(1200, targetScale));
-    viewScale.current += (clampedTarget - viewScale.current) * 0.06;
+    viewScale.current += (clampedTarget - viewScale.current) * 0.05;
     const scale = viewScale.current;
 
     const toX = (x: number) => W / 2 + (x - cx) * scale;
