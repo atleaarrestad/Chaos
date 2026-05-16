@@ -1,5 +1,6 @@
 import { createBrowserRouter } from 'react-router-dom';
 import { lazy, Suspense, type ReactNode } from 'react';
+import type React from 'react';
 import Layout from '@/components/Layout/Layout';
 
 const Home        = lazy(() => import('@/pages/Home/Home'));
@@ -13,9 +14,25 @@ const Conway          = lazy(() => import('@/pages/Conway/Conway'));
 const ThreeBody       = lazy(() => import('@/pages/ThreeBody/ThreeBody'));
 const NotFound        = lazy(() => import('@/pages/NotFound/NotFound'));
 
+const spinnerStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: '100%',
+  height: '100%',
+  color: 'var(--text-subtle)',
+  fontSize: '1.5rem',
+  animation: 'lazy-spin 1.2s linear infinite',
+};
+
 function Lazy({ children }: { children: ReactNode }) {
   return (
-    <Suspense fallback={<div style={{ padding: '2rem', color: 'var(--text-muted)' }}>Loading…</div>}>
+    <Suspense fallback={
+      <>
+        <style>{`@keyframes lazy-spin { to { transform: rotate(360deg); } }`}</style>
+        <div style={spinnerStyle}>✦</div>
+      </>
+    }>
       {children}
     </Suspense>
   );

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import styles from './InfoDialog.module.css';
 
 interface Props {
@@ -8,6 +8,12 @@ interface Props {
 }
 
 export function InfoDialog({ title, onClose, children }: Props) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onClose]);
+
   return (
     <div className={styles.overlay} onClick={onClose}>
       <div className={styles.dialog} onClick={e => e.stopPropagation()}>

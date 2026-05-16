@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { ExportFormat } from '../../lib/exportImage';
 import styles from './ExportDialog.module.css';
 
@@ -32,6 +32,12 @@ interface Props {
 export default function ExportDialog({ onClose, onDownload, isRendering = false }: Props) {
   const [size,   setSize]   = useState<(typeof SIZES)[number]>(SIZES[1]); // FHD default
   const [format, setFormat] = useState<ExportFormat>('png');
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onClose]);
 
   const handleDownload = async () => {
     await onDownload({ width: size.w, height: size.h, format });
