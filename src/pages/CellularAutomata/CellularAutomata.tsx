@@ -459,11 +459,27 @@ const PRESETS_BY_RULESET: Record<string, Preset[]> = {
   ],
 
   replicator: [
-    { label: 'Single cell', sub: 'Seed',       cells: [[0,0]] },
-    { label: 'Block',       sub: '2×2 seed',   cells: [[0,0],[0,1],[1,0],[1,1]] },
-    { label: 'Blinker',     sub: 'Row of 3',   cells: [[0,0],[0,1],[0,2]] },
-    { label: 'R-Pentomino', sub: 'Methuselah', cells: [[0,1],[0,2],[1,0],[1,1],[2,1]] },
-    { label: 'Glider',      sub: 'Spaceship',  cells: [[0,1],[1,2],[2,0],[2,1],[2,2]] },
+    { label: 'Single cell',    sub: 'Canonical replicator', cells: [[0,0]] },
+    {
+      label: 'Diagonal pair',  sub: 'Asymmetric seed',
+      cells: [[0,0],[1,1]],
+    },
+    {
+      label: 'Plus sign',      sub: '4-fold symmetry',
+      cells: [[0,1],[1,0],[1,1],[1,2],[2,1]],
+    },
+    {
+      label: '3×3 block',      sub: 'Fast dense copies',
+      cells: [
+        [0,0],[0,1],[0,2],
+        [1,0],[1,1],[1,2],
+        [2,0],[2,1],[2,2],
+      ],
+    },
+    {
+      label: 'Sparse corners', sub: 'Colliding replicators',
+      cells: [[0,0],[0,4],[4,0],[4,4]],
+    },
   ],
 
   'brians-brain': [
