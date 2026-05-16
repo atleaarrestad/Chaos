@@ -8,7 +8,7 @@ import { InfoDialog } from '@/components/InfoDialog';
 import { useFullscreen } from '@/hooks/useFullscreen';
 import { getNumParam, getStrParam, getBoolParam, useShareUrl } from '@/hooks/useUrlParams';
 import ExportDialog from '../../components/ExportDialog/ExportDialog';
-import { exportImage } from '../../lib/exportImage';
+import { downloadCanvas } from '../../lib/exportImage';
 import {
   detectWebGL,
   createKochRenderer,
@@ -500,9 +500,16 @@ export default function Koch() {
         <ExportDialog
           onClose={() => setShowExport(false)}
           onDownload={({ width, height, format }) => {
-            const canvas = (useGPU ? glCanvasRef : cpuCanvasRef).current;
-            if (!canvas) return;
-            exportImage(canvas, width, height, format, 'koch-snowflake');
+            const off = document.createElement('canvas');
+            off.width = width; off.height = height;
+            if (useGPURef.current) {
+              const tmp = createKochRenderer(off);
+              if (tmp) { tmp.render({ ...pRef.current, rotation: rotRef.current }); tmp.dispose(); }
+            } else {
+              const src = cpuCanvasRef.current;
+              if (src) off.getContext('2d')!.drawImage(src, 0, 0, width, height);
+            }
+            downloadCanvas(off, format, 'koch-snowflake');
             setShowExport(false);
           }}
         />

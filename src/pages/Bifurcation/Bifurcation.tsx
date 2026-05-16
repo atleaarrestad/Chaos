@@ -8,7 +8,7 @@ import { InfoDialog } from '@/components/InfoDialog';
 import { useFullscreen } from '@/hooks/useFullscreen';
 import { getNumParam, getStrParam, useShareUrl } from '@/hooks/useUrlParams';
 import ExportDialog from '../../components/ExportDialog/ExportDialog';
-import { exportImage } from '../../lib/exportImage';
+import { downloadCanvas } from '../../lib/exportImage';
 import {
   detectWebGL,
   createWebGLRenderer,
@@ -633,9 +633,20 @@ export default function Bifurcation() {
         <ExportDialog
           onClose={() => setShowExport(false)}
           onDownload={({ width, height, format }) => {
-            const canvas = (useGPU ? glCanvasRef : cpuCanvasRef).current;
-            if (!canvas) return;
-            exportImage(canvas, width, height, format, 'bifurcation');
+            const off = document.createElement('canvas');
+            off.width = width; off.height = height;
+            if (pRef.current.useGPU) {
+              const tmp = createWebGLRenderer(off);
+              if (tmp) {
+                const { rMin, rMax, yMin, yMax, iterations, burnin, colorScheme, logScale } = pRef.current;
+                tmp.render({ rMin, rMax, yMin, yMax, iterations, burnin, colorScheme, logScale });
+                tmp.dispose();
+              }
+            } else {
+              const src = cpuCanvasRef.current;
+              if (src) off.getContext('2d')!.drawImage(src, 0, 0, width, height);
+            }
+            downloadCanvas(off, format, 'bifurcation');
             setShowExport(false);
           }}
         />
