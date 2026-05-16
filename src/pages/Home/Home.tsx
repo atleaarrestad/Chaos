@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { MiniPreview, type PreviewType } from '../../components/MiniPreview/MiniPreview';
 import styles from './Home.module.css';
 
 interface Exploration {
@@ -6,7 +7,7 @@ interface Exploration {
   title: string;
   category: string;
   description: string;
-  symbol: string;
+  previewType: PreviewType;
   color: string;
 }
 
@@ -17,7 +18,7 @@ const EXPLORATIONS: Exploration[] = [
     category: 'Attractor',
     description:
       'Six strange attractors: Lorenz, Rössler, Halvorsen, Thomas, Aizawa, Dadras. Each born from three equations yet producing infinitely complex, never-repeating orbits.',
-    symbol: '∿',
+    previewType: 'lorenz',
     color: 'var(--col-lorenz)',
   },
   {
@@ -26,7 +27,7 @@ const EXPLORATIONS: Exploration[] = [
     category: 'Fractal',
     description:
       'The most famous object in mathematics. An infinitely complex boundary emerges from iterating a single quadratic equation on the complex plane.',
-    symbol: '∞',
+    previewType: 'mandelbrot',
     color: 'var(--col-mandelbrot)',
   },
   {
@@ -35,7 +36,7 @@ const EXPLORATIONS: Exploration[] = [
     category: 'Curve',
     description:
       'A heart-shaped curve traced by a point on a circle rolling around an equal circle. Also the main bulb boundary of the Mandelbrot set.',
-    symbol: 'θ',
+    previewType: 'cardioid',
     color: 'var(--col-cardioid)',
   },
   {
@@ -44,7 +45,7 @@ const EXPLORATIONS: Exploration[] = [
     category: 'Diagram',
     description:
       'The logistic map x → r·x·(1−x) reveals the road to chaos through period doubling. The Feigenbaum constant δ ≈ 4.669 governs the cascade.',
-    symbol: 'δ',
+    previewType: 'bifurcation',
     color: 'var(--col-bifurcation)',
   },
   {
@@ -53,7 +54,7 @@ const EXPLORATIONS: Exploration[] = [
     category: 'Fractal',
     description:
       'An infinite perimeter enclosing a finite area. Each edge of an equilateral triangle repeatedly sprouts smaller triangles, revealing self-similarity at every scale.',
-    symbol: '❄',
+    previewType: 'koch',
     color: 'var(--col-koch)',
   },
   {
@@ -62,7 +63,7 @@ const EXPLORATIONS: Exploration[] = [
     category: 'Attractor',
     description:
       'Two linked pendulums with unpredictable, swirling motion. A deceptively simple mechanical system that produces genuinely chaotic trajectories.',
-    symbol: 'g',
+    previewType: 'pendulum',
     color: 'var(--col-pendulum)',
   },
   {
@@ -71,7 +72,7 @@ const EXPLORATIONS: Exploration[] = [
     category: 'Cellular Automaton',
     description:
       'Zero-player game on an infinite grid. Four simple rules applied to cells (alive or dead) produce emergent complexity: oscillators, spaceships, and unbounded growth.',
-    symbol: '⬛',
+    previewType: 'conway',
     color: 'var(--col-conway)',
   },
   {
@@ -80,7 +81,7 @@ const EXPLORATIONS: Exploration[] = [
     category: 'N-Body',
     description:
       'Three massive bodies attracting each other through gravity. While the two-body problem is solvable, the three-body problem is generically chaotic — tiny changes in initial conditions lead to wildly different outcomes.',
-    symbol: '⊙',
+    previewType: 'threebody',
     color: 'var(--col-three-body)',
   },
 ];
@@ -106,7 +107,7 @@ export default function Home() {
             style={{ '--card-color': exp.color } as React.CSSProperties}
           >
             <div className={styles.cardVisual}>
-              <span className={styles.cardSymbol}>{exp.symbol}</span>
+              <MiniPreview type={exp.previewType} />
             </div>
             <div className={styles.cardBody}>
               <span className={styles.cardCategory}>{exp.category}</span>

@@ -4,6 +4,7 @@ import { useFullscreen } from '@/hooks/useFullscreen';
 import { useShareUrl } from '@/hooks/useUrlParams';
 import ExportDialog from '../../components/ExportDialog/ExportDialog';
 import { exportImage } from '../../lib/exportImage';
+import { ConwayGPU } from './conway-gpu';
 import styles from './Conway.module.css';
 
 // ─── Grid constants ───────────────────────────────────────────────────────────
@@ -324,6 +325,7 @@ export default function Conway() {
   const rafRef         = useRef(0);
   const pendingSizeRef = useRef<{ w: number; h: number } | null>(null);
   const sparkBufRef    = useRef<number[]>([]);
+  const gpuRef         = useRef<ConwayGPU | null>(null);
 
   // Viewport — stored as refs so the RAF loop reads them without re-renders
   const viewRef     = useRef({ x: COLS / 2 - 30, y: ROWS / 2 - 20 });
@@ -357,6 +359,31 @@ export default function Conway() {
   useEffect(() => { speedRef.current = speed; }, [speed]);
   useEffect(() => { ageColorRef.current = ageColor; }, [ageColor]);
 
+  // ─── GPU init (runs before the RAF loop) ─────────────────────────────────────
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    try {
+      const gl = canvas.getContext('webgl2', {
+        preserveDrawingBuffer: true,
+        antialias: false,
+        alpha: false,
+      }) as WebGL2RenderingContext | null;
+      if (gl) {
+        const gpu = new ConwayGPU(gl, COLS, ROWS);
+        gpu.uploadState(gridRef.current, ageGridRef.current);
+        gpuRef.current = gpu;
+      }
+    } catch {
+      // Fall back to CPU path silently
+    }
+    return () => {
+      gpuRef.current?.destroy();
+      gpuRef.current = null;
+    };
+  }, []);
+
   // ─── RAF loop ─────────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -379,29 +406,54 @@ export default function Conway() {
         const interval = 1000 / speedRef.current;
         if (ts - lastStepRef.current >= interval) {
           lastStepRef.current = ts;
-          const [nextGrid, nextAges] = stepGrid(gridRef.current, ageGridRef.current);
-          gridRef.current    = nextGrid;
-          ageGridRef.current = nextAges;
-          genRef.current += 1;
-          const pop = countPop(gridRef.current);
-          sparkBufRef.current = [...sparkBufRef.current.slice(-(SPARK_LEN - 1)), pop];
-          setGeneration(genRef.current);
-          setPopulation(pop);
-          setSparkData([...sparkBufRef.current]);
+          const gpu = gpuRef.current;
+          if (gpu) {
+            gpu.step();
+            genRef.current += 1;
+            // Read population every 5 steps to amortise readPixels cost
+            if (genRef.current % 5 === 0) {
+              const pop = gpu.readPopulation();
+              sparkBufRef.current = [...sparkBufRef.current.slice(-(SPARK_LEN - 1)), pop];
+              setPopulation(pop);
+              setSparkData([...sparkBufRef.current]);
+            }
+            setGeneration(genRef.current);
+          } else {
+            const [nextGrid, nextAges] = stepGrid(gridRef.current, ageGridRef.current);
+            gridRef.current    = nextGrid;
+            ageGridRef.current = nextAges;
+            genRef.current += 1;
+            const pop = countPop(gridRef.current);
+            sparkBufRef.current = [...sparkBufRef.current.slice(-(SPARK_LEN - 1)), pop];
+            setGeneration(genRef.current);
+            setPopulation(pop);
+            setSparkData([...sparkBufRef.current]);
+          }
         }
       }
 
+      const gpu = gpuRef.current;
       if (canvasRef.current) {
-        renderGrid(
-          canvasRef.current,
-          gridRef.current,
-          ageGridRef.current,
-          viewRef.current.x,
-          viewRef.current.y,
-          cellSizeRef.current,
-          !playingRef.current,
-          ageColorRef.current,
-        );
+        if (gpu) {
+          gpu.render(
+            viewRef.current.x,
+            viewRef.current.y,
+            cellSizeRef.current,
+            !playingRef.current,
+            ageColorRef.current,
+          );
+        } else {
+          renderGrid(
+            canvasRef.current,
+            gridRef.current,
+            ageGridRef.current,
+            viewRef.current.x,
+            viewRef.current.y,
+            cellSizeRef.current,
+            !playingRef.current,
+            ageColorRef.current,
+          );
+        }
       }
 
       rafRef.current = requestAnimationFrame(frame);
@@ -493,13 +545,22 @@ export default function Conway() {
 
     // Left-click → immediately toggle and enter paint mode
     const [r, c] = getCellAt(e.clientX, e.clientY);
-    const idx        = cellIdx(r, c);
-    const newState: 0 | 1 = gridRef.current[idx] ? 0 : 1;
+    const idx = cellIdx(r, c);
+    const gpu = gpuRef.current;
+    const newState: 0 | 1 = gpu
+      ? (gpu.readCell(c, r) ? 0 : 1)
+      : (gridRef.current[idx] ? 0 : 1);
+    if (gpu) {
+      gpu.setCell(c, r, newState, newState);
+    } else {
+      gridRef.current[idx]    = newState;
+      ageGridRef.current[idx] = newState;
+    }
     gridRef.current[idx]    = newState;
-    ageGridRef.current[idx] = newState; // 1 = just born, 0 = just died
+    ageGridRef.current[idx] = newState;
     dragRef.current = { isPan: false, paintState: newState, paintedCells: new Set([idx]) };
     setActivePreset(-1);
-    setPopulation(countPop(gridRef.current));
+    setPopulation(gpu ? gpu.readPopulation() : countPop(gridRef.current));
   }, [getCellAt]);
 
   const onPointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -517,9 +578,13 @@ export default function Conway() {
     const idx = cellIdx(r, c);
     if (!drag.paintedCells.has(idx)) {
       drag.paintedCells.add(idx);
+      const gpu = gpuRef.current;
+      if (gpu) {
+        gpu.setCell(c, r, drag.paintState, drag.paintState);
+      }
       gridRef.current[idx]    = drag.paintState;
       ageGridRef.current[idx] = drag.paintState;
-      setPopulation(countPop(gridRef.current));
+      setPopulation(gpu ? gpu.readPopulation() : countPop(gridRef.current));
     }
   }, [getCellAt]);
 
@@ -555,6 +620,7 @@ export default function Conway() {
     ageGridRef.current = ages;
     genRef.current     = 0;
     sparkBufRef.current = [];
+    gpuRef.current?.uploadState(g, ages);
     setGeneration(0);
     setPopulation(countPop(g));
     setSparkData([]);
@@ -566,22 +632,36 @@ export default function Conway() {
   }, [centerView]);
 
   const handleStep = useCallback(() => {
-    const [nextGrid, nextAges] = stepGrid(gridRef.current, ageGridRef.current);
-    gridRef.current    = nextGrid;
-    ageGridRef.current = nextAges;
-    genRef.current += 1;
-    const pop = countPop(gridRef.current);
-    sparkBufRef.current = [...sparkBufRef.current.slice(-(SPARK_LEN - 1)), pop];
-    setGeneration(genRef.current);
-    setPopulation(pop);
-    setSparkData([...sparkBufRef.current]);
+    const gpu = gpuRef.current;
+    if (gpu) {
+      gpu.step();
+      genRef.current += 1;
+      const pop = gpu.readPopulation();
+      sparkBufRef.current = [...sparkBufRef.current.slice(-(SPARK_LEN - 1)), pop];
+      setGeneration(genRef.current);
+      setPopulation(pop);
+      setSparkData([...sparkBufRef.current]);
+    } else {
+      const [nextGrid, nextAges] = stepGrid(gridRef.current, ageGridRef.current);
+      gridRef.current    = nextGrid;
+      ageGridRef.current = nextAges;
+      genRef.current += 1;
+      const pop = countPop(gridRef.current);
+      sparkBufRef.current = [...sparkBufRef.current.slice(-(SPARK_LEN - 1)), pop];
+      setGeneration(genRef.current);
+      setPopulation(pop);
+      setSparkData([...sparkBufRef.current]);
+    }
   }, []);
 
   const handleClear = useCallback(() => {
-    gridRef.current    = emptyGrid();
-    ageGridRef.current = emptyAgeGrid();
+    const g    = emptyGrid();
+    const ages = emptyAgeGrid();
+    gridRef.current    = g;
+    ageGridRef.current = ages;
     genRef.current     = 0;
     sparkBufRef.current = [];
+    gpuRef.current?.uploadState(g, ages);
     setGeneration(0);
     setPopulation(0);
     setSparkData([]);
