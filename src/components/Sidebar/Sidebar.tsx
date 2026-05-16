@@ -38,8 +38,7 @@ const NAV: NavSection[] = [
   {
     section: 'Cellular Automata',
     items: [
-      { path: '/conway',            label: 'Game of Life',      symbol: '⬛' },
-      { path: '/cellular-automata', label: 'Cellular Automata',  symbol: '🔲' },
+      { path: '/cellular-automata', label: 'Cellular Automata', symbol: '🔲' },
     ],
   },
 ];

@@ -67,20 +67,11 @@ const EXPLORATIONS: Exploration[] = [
     color: 'var(--col-pendulum)',
   },
   {
-    path: '/conway',
-    title: "Conway's Game of Life",
-    category: 'Cellular Automaton',
-    description:
-      'Zero-player game on an infinite grid. Four simple rules applied to cells (alive or dead) produce emergent complexity: oscillators, spaceships, and unbounded growth.',
-    previewType: 'conway',
-    color: 'var(--col-conway)',
-  },
-  {
     path: '/cellular-automata',
     title: 'Cellular Automata',
     category: 'Cellular Automaton',
     description:
-      "Eleven rulesets — Langton's Ant, elementary 1D rules, Brian's Brain, and 2D outer-totalistic automata. Simple local rules, endlessly varied emergent behavior.",
+      "Twelve rulesets — Conway's Life, Langton's Ant, elementary 1D rules, Brian's Brain, and 2D outer-totalistic automata. Simple local rules, endlessly varied emergent behavior.",
     previewType: 'cellular',
     color: 'var(--col-ca)',
   },

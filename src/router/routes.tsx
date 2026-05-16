@@ -1,4 +1,4 @@
-import { createBrowserRouter } from 'react-router-dom';
+import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { lazy, Suspense, type ReactNode } from 'react';
 import type React from 'react';
 import Layout from '@/components/Layout/Layout';
@@ -10,7 +10,6 @@ const DoublePendulum  = lazy(() => import('@/pages/DoublePendulum/DoublePendulum
 const Cardioid        = lazy(() => import('@/pages/Cardioid/Cardioid'));
 const Bifurcation     = lazy(() => import('@/pages/Bifurcation/Bifurcation'));
 const Koch            = lazy(() => import('@/pages/Koch/Koch'));
-const Conway          = lazy(() => import('@/pages/Conway/Conway'));
 const CellularAutomata = lazy(() => import('@/pages/CellularAutomata/CellularAutomata'));
 const ThreeBody       = lazy(() => import('@/pages/ThreeBody/ThreeBody'));
 const NotFound        = lazy(() => import('@/pages/NotFound/NotFound'));
@@ -51,7 +50,7 @@ export const router = createBrowserRouter([
       { path: 'bifurcation', element: <Lazy><Bifurcation /></Lazy> },
       { path: 'double-pendulum', element: <Lazy><DoublePendulum /></Lazy> },
       { path: 'koch', element: <Lazy><Koch /></Lazy> },
-      { path: 'conway', element: <Lazy><Conway /></Lazy> },
+      { path: 'conway', element: <Navigate to="/cellular-automata" replace /> },
       { path: 'cellular-automata', element: <Lazy><CellularAutomata /></Lazy> },
       { path: 'three-body', element: <Lazy><ThreeBody /></Lazy> },
       { path: '*', element: <Lazy><NotFound /></Lazy> },
