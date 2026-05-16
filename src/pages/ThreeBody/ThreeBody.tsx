@@ -1,9 +1,13 @@
 import { useState, useEffect, useRef, useCallback, type CSSProperties } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Slider, Toggle,
   ControlPanel, ControlGroup, SimControls,
 } from '@/components/Controls';
 import { InfoDialog } from '@/components/InfoDialog';
+import { useFullscreen } from '@/hooks/useFullscreen';
+import { getNumParam, useShareUrl } from '@/hooks/useUrlParams';
+import { exportCanvasPng } from '@/lib/exportPng';
 import styles from './ThreeBody.module.css';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -182,27 +186,37 @@ interface LiveParams {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function ThreeBody() {
+  const [searchParams] = useSearchParams();
+  const initialPreset = Math.round(getNumParam(searchParams, 'p', 0));
+  const validPreset = initialPreset >= 0 && initialPreset < PRESETS.length ? initialPreset : 0;
+
   const [running,      setRunning]      = useState(true);
-  const [speed,        setSpeed]        = useState(1);
-  const [dt,           setDt]           = useState(PRESETS[0].dt);
+  const [speed,        setSpeed]        = useState(PRESETS[validPreset].speed ?? 1);
+  const [dt,           setDt]           = useState(PRESETS[validPreset].dt);
   const [trailLen,     setTrailLen]     = useState(3000);
   const [showTrails,   setShowTrails]   = useState(true);
   const [showVectors,  setShowVectors]  = useState(false);
-  const [G,            setG]            = useState(PRESETS[0].G);
-  const [activePreset, setActivePreset] = useState<number | null>(0);
+  const [G,            setG]            = useState(PRESETS[validPreset].G);
+  const [activePreset, setActivePreset] = useState<number | null>(validPreset);
   const [showInfo,     setShowInfo]     = useState(false);
   const [selectedBody, setSelectedBody] = useState(0);
   const [showCoM,      setShowCoM]      = useState(false);
   const [masses,       setMasses]       = useState<[number, number, number]>(
-    PRESETS[0].bodies.map(b => b.mass) as [number, number, number]
+    PRESETS[validPreset].bodies.map(b => b.mass) as [number, number, number]
   );
+  const [copied, setCopied] = useState(false);
+  const copiedTimeoutRef = useRef<number | null>(null);
 
+  const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef   = useRef<HTMLCanvasElement>(null);
   const rafRef      = useRef(0);
   const energyRef   = useRef<HTMLSpanElement>(null);
   const timeHudRef  = useRef<HTMLSpanElement>(null);
 
-  const bodiesRef   = useRef<Bodies>(structuredClone(PRESETS[0].bodies) as Bodies);
+  const { isFullscreen, toggleFullscreen } = useFullscreen(containerRef);
+  const { shareUrl } = useShareUrl();
+
+  const bodiesRef   = useRef<Bodies>(structuredClone(PRESETS[validPreset].bodies) as Bodies);
   const trailsRef   = useRef<Float32Array[]>([
     new Float32Array(MAX_TRAIL * 2),
     new Float32Array(MAX_TRAIL * 2),
@@ -296,6 +310,28 @@ export default function ThreeBody() {
     }
     clearTrails();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const exportPng = useCallback(() => {
+    if (!canvasRef.current) return;
+    exportCanvasPng(canvasRef.current, 'three-body.png');
+  }, []);
+
+  const flashCopied = useCallback(() => {
+    setCopied(true);
+    if (copiedTimeoutRef.current !== null) window.clearTimeout(copiedTimeoutRef.current);
+    copiedTimeoutRef.current = window.setTimeout(() => setCopied(false), 2000);
+  }, []);
+
+  const handleShare = useCallback(() => {
+    if (activePreset !== null) {
+      shareUrl({ p: activePreset });
+    }
+    flashCopied();
+  }, [activePreset, flashCopied, shareUrl]);
+
+  useEffect(() => () => {
+    if (copiedTimeoutRef.current !== null) window.clearTimeout(copiedTimeoutRef.current);
+  }, []);
 
   // ── Randomize ─────────────────────────────────────────────────────────────
 
@@ -645,10 +681,23 @@ export default function ThreeBody() {
     };
   }, []);
 
+  // ── Keyboard shortcuts ─────────────────────────────────────────────────────
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.code === 'Space') { e.preventDefault(); setRunning(r => !r); }
+      if (e.code === 'KeyR')  { e.preventDefault(); resetSimulation(); }
+      if (e.code === 'KeyF')  { e.preventDefault(); toggleFullscreen(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [resetSimulation, toggleFullscreen]);
+
   // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
-    <div className={styles.container}>
+    <div ref={containerRef} className={styles.container}>
       <canvas ref={canvasRef} className={styles.canvas} />
 
       {/* ── Floating sidebar ──────────────────────────────────────────────────── */}
@@ -771,6 +820,7 @@ export default function ThreeBody() {
             </ControlGroup>
           </ControlPanel>
 
+
         </div>
 
         <div className={styles.sidebarActions}>
@@ -778,6 +828,7 @@ export default function ThreeBody() {
             running={running}
             onToggle={() => setRunning(r => !r)}
             onReset={resetSimulation}
+            onExport={exportPng}
           />
         </div>
       </div>
@@ -791,6 +842,16 @@ export default function ThreeBody() {
         <div className={styles.hudRight}>
           <span className={styles.hudHint} ref={energyRef} />
           <span className={styles.hudHint}>{running ? 'running' : 'paused'}</span>
+          <button className={styles.hudBtn} onClick={handleShare} title="Copy shareable link">
+            {copied ? '✓' : '⎘'}
+          </button>
+          <button
+            className={styles.hudBtn}
+            onClick={toggleFullscreen}
+            title={isFullscreen ? 'Exit fullscreen (F)' : 'Fullscreen (F)'}
+          >
+            {isFullscreen ? '⤡' : '⤢'}
+          </button>
           <button
             className={styles.infoBtn}
             onClick={() => setShowInfo(true)}

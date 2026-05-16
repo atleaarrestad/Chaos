@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, type CSSProperties } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Info } from 'lucide-react';
 import {
   Slider, Toggle, SelectControl,
@@ -6,6 +7,9 @@ import {
 } from '@/components/Controls';
 import { InfoDialog } from '@/components/InfoDialog';
 import { detectWebGL2 } from '@/lib/gpu/context';
+import { useFullscreen } from '@/hooks/useFullscreen';
+import { getStrParam, useShareUrl } from '@/hooks/useUrlParams';
+import { exportCanvasPng } from '@/lib/exportPng';
 import styles from './Lorenz.module.css';
 import { AttractorGPU, type AttractorGPUParams, type AttractorDerivFn } from './attractor-gpu';
 
@@ -368,10 +372,20 @@ function formatAxisValue(value: number): string {
 
 
 export default function Lorenz() {
-  const [attractorTypeId, setAttractorTypeId] = useState('lorenz');
-  const [instances, setInstances] = useState<AttractorInstance[]>([makeInstance('i0', 0, { ...DEFAULT_LORENZ_PARAMS })]);
+  const [searchParams] = useSearchParams();
+  const rawAttractorTypeId = getStrParam(searchParams, 'a', 'lorenz');
+  const initialAttractorTypeId = ATTRACTOR_CATALOGUE.some((attractor) => attractor.id === rawAttractorTypeId)
+    ? rawAttractorTypeId
+    : 'lorenz';
+  const initialDef = ATTRACTOR_CATALOGUE.find((attractor) => attractor.id === initialAttractorTypeId)!;
+  const initialParamValues = initialDef.id === 'lorenz'
+    ? { ...DEFAULT_LORENZ_PARAMS }
+    : Object.fromEntries(initialDef.params.map((param) => [param.key, param.default]));
+
+  const [attractorTypeId, setAttractorTypeId] = useState(initialAttractorTypeId);
+  const [instances, setInstances] = useState<AttractorInstance[]>([makeInstance('i0', 0, { ...initialParamValues })]);
   const [selectedInstanceId, setSelectedInstanceId] = useState('i0');
-  const [dt, setDt] = useState(0.002);
+  const [dt, setDt] = useState(initialDef.dt);
   const [speed, setSpeed] = useState(4);
   const [trailLength, setTrailLength] = useState(10_000);
   const [colorScheme, setColorScheme] = useState<ColorScheme>('velocity');
@@ -380,21 +394,27 @@ export default function Lorenz() {
   const [showAxes, setShowAxes] = useState(false);
   const [autoRotate, setAutoRotate] = useState(false);
   const [showPoincare, setShowPoincare] = useState(false);
-  const [poincareZ, setPoincareZ] = useState(0);
-  const [sectionAxis, setSectionAxis] = useState<SectionAxis>('y');
+  const [poincareZ, setPoincareZ] = useState(initialDef.defaultSectionVal);
+  const [sectionAxis, setSectionAxis] = useState<SectionAxis>(initialDef.defaultSectionAxis);
   const [showReturnMap, setShowReturnMap] = useState(false);
   const [gpuAvailable, setGpuAvailable] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const copiedTimeoutRef = useRef<number | null>(null);
 
+  const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef(0);
   const attractorStatesRef = useRef<AttractorRuntime[]>([]);
-  const rotRef = useRef({ x: 0.4, y: 0.5 });
+  const rotRef = useRef({ x: initialDef.defaultView.rx, y: initialDef.defaultView.ry });
   const dragRef = useRef<{ x: number; y: number } | null>(null);
   const zoomRef = useRef(1);
   const gpuRef = useRef<AttractorGPU | null>(null);
   const poincarePanelRef = useRef<HTMLCanvasElement>(null);
   const returnMapPanelRef = useRef<HTMLCanvasElement>(null);
+
+  const { isFullscreen, toggleFullscreen } = useFullscreen(containerRef);
+  const { shareUrl } = useShareUrl();
 
   const pRef = useRef<Params>({
     attractorTypeId,
@@ -455,10 +475,26 @@ export default function Lorenz() {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.code === 'Space') { e.preventDefault(); setRunning(r => !r); }
       if (e.code === 'KeyR')  { e.preventDefault(); reset(); }
+      if (e.code === 'KeyF')  { e.preventDefault(); toggleFullscreen(); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [reset]);
+  }, [reset, toggleFullscreen]);
+
+  const exportPng = useCallback(() => {
+    if (canvasRef.current) exportCanvasPng(canvasRef.current, 'lorenz.png');
+  }, []);
+
+  const handleShare = useCallback(() => {
+    shareUrl({ a: attractorTypeId });
+    setCopied(true);
+    if (copiedTimeoutRef.current !== null) window.clearTimeout(copiedTimeoutRef.current);
+    copiedTimeoutRef.current = window.setTimeout(() => setCopied(false), 2000);
+  }, [shareUrl, attractorTypeId]);
+
+  useEffect(() => () => {
+    if (copiedTimeoutRef.current !== null) window.clearTimeout(copiedTimeoutRef.current);
+  }, []);
 
   const snapTo = useCallback((rx: number, ry: number) => {
     rotRef.current = { x: rx, y: ry };
@@ -523,7 +559,7 @@ export default function Lorenz() {
   }, []);
 
   useEffect(() => {
-    attractorStatesRef.current = buildInstanceStates(ATTRACTOR_CATALOGUE[0], instances);
+    attractorStatesRef.current = buildInstanceStates(initialDef, instances);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -531,7 +567,7 @@ export default function Lorenz() {
     setGpuAvailable(available);
     if (!available) return;
     try {
-      const def = ATTRACTOR_CATALOGUE[0];
+      const def = initialDef;
       const gpu = new AttractorGPU(
         def.gpuType,
         def.params.map(p => p.default),
@@ -1137,7 +1173,7 @@ export default function Lorenz() {
   const sectionStep = Math.max(0.001, Math.min(1, currentDef.box.step / 10));
 
   return (
-    <div className={styles.container}>
+    <div ref={containerRef} className={styles.container}>
       <canvas ref={canvasRef} className={styles.canvas} />
 
       <div ref={sidebarRef} className={styles.sidebar}>
@@ -1326,6 +1362,7 @@ export default function Lorenz() {
           ))}
         </div>
 
+
         </div>{/* end sidebarPanels */}
 
         <div className={styles.sidebarActions}>
@@ -1333,6 +1370,7 @@ export default function Lorenz() {
           running={running}
           onToggle={() => setRunning(r => !r)}
           onReset={reset}
+          onExport={exportPng}
         />
         </div>
       </div>
@@ -1345,7 +1383,17 @@ export default function Lorenz() {
         </div>
         <div className={styles.hudRight}>
           <span className={styles.hudHint}>drag to rotate</span>
-          <button className={styles.infoBtn} onClick={() => setShowInfo(true)} title="About strange attractors">ⓘ</button>
+          <button className={styles.hudBtn} onClick={handleShare} title="Copy shareable link">
+            {copied ? '✓' : '⎘'}
+          </button>
+          <button
+            className={styles.hudBtn}
+            onClick={toggleFullscreen}
+            title={isFullscreen ? 'Exit fullscreen (F)' : 'Fullscreen (F)'}
+          >
+            {isFullscreen ? '⤡' : '⤢'}
+          </button>
+          <button className={styles.hudInfoBtn} onClick={() => setShowInfo(true)} title="About strange attractors">ⓘ</button>
         </div>
       </div>
 

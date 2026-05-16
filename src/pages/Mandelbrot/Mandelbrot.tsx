@@ -1,9 +1,12 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Slider, Toggle, SelectControl,
   ControlPanel, ControlGroup, SimControls,
 } from '@/components/Controls';
 import { InfoDialog } from '@/components/InfoDialog';
+import { useFullscreen } from '@/hooks/useFullscreen';
+import { getNumParam, getStrParam, useShareUrl } from '@/hooks/useUrlParams';
 import type { PaletteId } from './mandelbrot.worker';
 import {
   detectWebGL, createWebGLRenderer,
@@ -41,6 +44,7 @@ const PRESETS = [
 ] as const;
 
 const INITIAL: View = { centerX: -0.5, centerY: 0, zoom: 250 };
+const PALETTE_IDS: PaletteId[] = ['classic', 'fire', 'ice', 'electric', 'mono', 'sunset'];
 const TILE = 256;
 const RENDER_DELAY = 300; // ms idle before starting render
 
@@ -88,11 +92,22 @@ function fmtZoom(zoom: number): string {
 }
 
 export default function Mandelbrot() {
+  const [searchParams] = useSearchParams();
+  const initialPalette = getStrParam(searchParams, 'pal', 'classic');
+  const initialPaletteId = PALETTE_IDS.includes(initialPalette as PaletteId)
+    ? initialPalette as PaletteId
+    : 'classic';
+
+  const containerRef   = useRef<HTMLDivElement>(null);
   const canvasRef      = useRef<HTMLCanvasElement>(null);
   const glCanvasRef    = useRef<HTMLCanvasElement>(null);
   const snapshotRef    = useRef<HTMLCanvasElement>(null);
   const backRef        = useRef<HTMLCanvasElement | null>(null);
-  const view           = useRef<View>({ ...INITIAL });
+  const view           = useRef<View>({
+    centerX: getNumParam(searchParams, 'cx', INITIAL.centerX),
+    centerY: getNumParam(searchParams, 'cy', INITIAL.centerY),
+    zoom: getNumParam(searchParams, 'z', INITIAL.zoom),
+  });
   const workersRef     = useRef<Worker[]>([]);
   const webglRef       = useRef<WebGLRenderer | null>(null);
   const useGPURef      = useRef(detectWebGL());
@@ -113,7 +128,7 @@ export default function Mandelbrot() {
 
   // ── Color / quality / Julia params ────────────────────────────────────────
 
-  const [paletteId,     setPaletteId]     = useState<PaletteId>('classic');
+  const [paletteId,     setPaletteId]     = useState<PaletteId>(initialPaletteId);
   const [colorSpeed,    setColorSpeed]    = useState(0.28);
   const [colorOffset,   setColorOffset]   = useState(0);
   const [invertColors,  setInvertColors]  = useState(false);
@@ -135,6 +150,11 @@ export default function Mandelbrot() {
   const [animZoomDir,      setAnimZoomDir]      = useState<'in' | 'out' | 'pingpong'>('in');
   const [juliaOrbitRadius, setJuliaOrbitRadius] = useState(0.7);
   const [colorCycle,       setColorCycle]       = useState(false);
+  const [copied, setCopied] = useState(false);
+  const copiedTimeoutRef = useRef<number | null>(null);
+
+  const { isFullscreen, toggleFullscreen } = useFullscreen(containerRef);
+  const { shareUrl } = useShareUrl();
 
   // Animation refs — read inside rAF loop to avoid stale closures
   const animModeRef          = useRef<'zoom' | 'julia' | 'both'>('zoom');
@@ -148,7 +168,7 @@ export default function Mandelbrot() {
   // Mutable ref read by startRender — avoids stale closures without needing
   // to recreate callbacks every time a UI param changes.
   const cpRef = useRef<ColorParams>({
-    paletteId: 'classic', colorSpeed: 0.28, colorOffset: 0,
+    paletteId: initialPaletteId, colorSpeed: 0.28, colorOffset: 0,
     invertColors: false, maxIterMode: 'auto', maxIterManual: 500,
     juliaMode: false, juliaRe: -0.7, juliaIm: 0.27015,
   });
@@ -721,10 +741,11 @@ export default function Mandelbrot() {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.code === 'Space') { e.preventDefault(); if (gpuAvailable) toggleAnimation(); }
       if (e.code === 'KeyR')  { e.preventDefault(); setAnimating(false); reset(); }
+      if (e.code === 'KeyF')  { e.preventDefault(); toggleFullscreen(); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [toggleAnimation, reset, gpuAvailable]);
+  }, [toggleAnimation, reset, gpuAvailable, toggleFullscreen]);
 
   // ── color / quality param handlers ─────────────────────────────────────────
 
@@ -891,8 +912,20 @@ export default function Mandelbrot() {
     }
   }, []);
 
+  const handleShare = useCallback(() => {
+    const v = view.current;
+    shareUrl({ cx: v.centerX, cy: v.centerY, z: v.zoom, pal: paletteId });
+    setCopied(true);
+    if (copiedTimeoutRef.current !== null) window.clearTimeout(copiedTimeoutRef.current);
+    copiedTimeoutRef.current = window.setTimeout(() => setCopied(false), 2000);
+  }, [shareUrl, paletteId]);
+
+  useEffect(() => () => {
+    if (copiedTimeoutRef.current !== null) window.clearTimeout(copiedTimeoutRef.current);
+  }, []);
+
   return (
-    <div className={styles.container}>
+    <div ref={containerRef} className={styles.container}>
       {/* GPU canvas sits behind; CPU canvas sits in front and always captures mouse events */}
       <canvas ref={glCanvasRef} className={styles.glCanvas}
         style={{ opacity: useGPU ? 1 : 0 }} />
@@ -1058,6 +1091,7 @@ export default function Mandelbrot() {
             />
           </ControlGroup>
         </ControlPanel>
+
         </div>{/* end sidebarPanels */}
 
         <div className={styles.sidebarActions}>
@@ -1106,6 +1140,16 @@ export default function Mandelbrot() {
                 ? 'click to pick c · scroll to zoom · drag to pan'
                 : 'scroll to zoom · drag to pan'}
           </span>
+          <button className={styles.hudBtn} onClick={handleShare} title="Copy shareable link">
+            {copied ? '✓' : '⎘'}
+          </button>
+          <button
+            className={styles.hudBtn}
+            onClick={toggleFullscreen}
+            title={isFullscreen ? 'Exit fullscreen (F)' : 'Fullscreen (F)'}
+          >
+            {isFullscreen ? '⤡' : '⤢'}
+          </button>
           <button className={styles.infoBtn} onClick={() => setShowInfo(true)} title="About the Mandelbrot set">ⓘ</button>
         </div>
       </div>

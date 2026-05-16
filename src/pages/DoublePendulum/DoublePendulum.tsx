@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Info } from 'lucide-react';
 import {
   Slider, Toggle, SelectControl,
@@ -6,6 +7,9 @@ import {
 } from '@/components/Controls';
 import { InfoDialog } from '@/components/InfoDialog';
 import { detectWebGL2 } from '@/lib/gpu/context';
+import { useFullscreen } from '@/hooks/useFullscreen';
+import { getNumParam, useShareUrl } from '@/hooks/useUrlParams';
+import { exportCanvasPng } from '@/lib/exportPng';
 import styles from './DoublePendulum.module.css';
 import { DoublePendulumGPU, STEPS_PER_FRAME, type DoublePendulumParams, type ColorMode } from './double-pendulum-gpu';
 
@@ -143,12 +147,19 @@ interface LiveParams {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function DoublePendulum() {
+  const [searchParams] = useSearchParams();
+  const initialTheta1 = getNumParam(searchParams, 't1', DEFAULT_THETA1 * DEG) * RAD;
+  const initialTheta2 = getNumParam(searchParams, 't2', DEFAULT_THETA2 * DEG) * RAD;
+  const initialOmega1 = getNumParam(searchParams, 'w1', DEFAULT_OMEGA1);
+  const initialOmega2 = getNumParam(searchParams, 'w2', DEFAULT_OMEGA2);
+  const initialGravity = getNumParam(searchParams, 'g', DEFAULT_G);
+
   // ── Physics params ──────────────────────────────────────────────────────────
-  const [theta1,  setTheta1]  = useState(DEFAULT_THETA1);
-  const [theta2,  setTheta2]  = useState(DEFAULT_THETA2);
-  const [omega1,  setOmega1]  = useState(DEFAULT_OMEGA1);
-  const [omega2,  setOmega2]  = useState(DEFAULT_OMEGA2);
-  const [g,       setG]       = useState(DEFAULT_G);
+  const [theta1,  setTheta1]  = useState(initialTheta1);
+  const [theta2,  setTheta2]  = useState(initialTheta2);
+  const [omega1,  setOmega1]  = useState(initialOmega1);
+  const [omega2,  setOmega2]  = useState(initialOmega2);
+  const [g,       setG]       = useState(initialGravity);
   const [spread,  setSpread]  = useState(DEFAULT_SPREAD);
   const [l1,      setL1]      = useState(DEFAULT_L1);
   const [l2,      setL2]      = useState(DEFAULT_L2);
@@ -168,14 +179,20 @@ export default function DoublePendulum() {
   const [gpuAvailable,  setGpuAvailable]  = useState(false);
   const [activePreset,  setActivePreset]  = useState<number | null>(1); // 1 = Classic (matches defaults)
   const [showInfo, setShowInfo] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const copiedTimeoutRef = useRef<number | null>(null);
 
   // ── Refs ────────────────────────────────────────────────────────────────────
+  const containerRef   = useRef<HTMLDivElement>(null);
   const canvasRef      = useRef<HTMLCanvasElement>(null);
   const phasePanelRef  = useRef<HTMLCanvasElement>(null);
   const sidebarRef     = useRef<HTMLDivElement>(null);
   const energyHudRef   = useRef<HTMLSpanElement>(null);
   const rafRef         = useRef(0);
   const gpuRef         = useRef<DoublePendulumGPU | null>(null);
+
+  const { isFullscreen, toggleFullscreen } = useFullscreen(containerRef);
+  const { shareUrl } = useShareUrl();
 
   /** Off-screen canvas for accumulated trail (GPU ensemble scatter). */
   const trailCanvasRef = useRef<HTMLCanvasElement>(document.createElement('canvas'));
@@ -186,7 +203,7 @@ export default function DoublePendulum() {
   const trailCountRef = useRef(0);
 
   /** CPU reference pendulum: exact initial conditions (no spread). */
-  const refRef = useRef({ th1: DEFAULT_THETA1, om1: DEFAULT_OMEGA1, th2: DEFAULT_THETA2, om2: DEFAULT_OMEGA2 });
+  const refRef = useRef({ th1: initialTheta1, om1: initialOmega1, th2: initialTheta2, om2: initialOmega2 });
 
   /** Ring buffer for (θ₁_wrapped, ω₁) phase portrait. */
   const phaseBufRef = useRef(new Float32Array(MAX_PHASE_PTS * 2));
@@ -240,15 +257,37 @@ export default function DoublePendulum() {
 
   // ─── Keyboard shortcuts ───────────────────────────────────────────────────
 
+  const exportPng = useCallback(() => {
+    if (canvasRef.current) exportCanvasPng(canvasRef.current, 'double-pendulum.png');
+  }, []);
+
+  const handleShare = useCallback(() => {
+    shareUrl({
+      t1: (theta1 * DEG).toFixed(2),
+      t2: (theta2 * DEG).toFixed(2),
+      w1: omega1.toFixed(3),
+      w2: omega2.toFixed(3),
+      g: g.toFixed(3),
+    });
+    setCopied(true);
+    if (copiedTimeoutRef.current !== null) window.clearTimeout(copiedTimeoutRef.current);
+    copiedTimeoutRef.current = window.setTimeout(() => setCopied(false), 2000);
+  }, [shareUrl, theta1, theta2, omega1, omega2, g]);
+
+  useEffect(() => () => {
+    if (copiedTimeoutRef.current !== null) window.clearTimeout(copiedTimeoutRef.current);
+  }, []);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.code === 'Space') { e.preventDefault(); setRunning(r => !r); }
       if (e.code === 'KeyR')  { e.preventDefault(); resetSimulation(); }
+      if (e.code === 'KeyF')  { e.preventDefault(); toggleFullscreen(); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [resetSimulation]);
+  }, [resetSimulation, toggleFullscreen]);
 
   /** Wraps a setter so that manually dragging any slider clears the active preset. */
   const clearPreset = useCallback((setter: (v: number) => void) => (v: number) => {
@@ -645,7 +684,7 @@ export default function DoublePendulum() {
   const theta2Deg = Math.round(theta2 * DEG);
 
   return (
-    <div className={styles.container}>
+    <div ref={containerRef} className={styles.container}>
       <canvas ref={canvasRef} className={styles.canvas} />
 
       {/* ── Floating sidebar ───────────────────────────────────────────────── */}
@@ -778,6 +817,7 @@ export default function DoublePendulum() {
             </>)}
           </ControlGroup>
         </ControlPanel>
+
         </div>{/* end sidebarPanels */}
 
         <div className={styles.sidebarActions}>
@@ -785,6 +825,7 @@ export default function DoublePendulum() {
             running={running}
             onToggle={() => setRunning(r => !r)}
             onReset={resetSimulation}
+            onExport={exportPng}
           />
         </div>
       </div>
@@ -839,6 +880,16 @@ export default function DoublePendulum() {
           <span className={styles.hudHint}>
             {running ? 'running' : 'paused'}
           </span>
+          <button className={styles.hudBtn} onClick={handleShare} title="Copy shareable link">
+            {copied ? '✓' : '⎘'}
+          </button>
+          <button
+            className={styles.hudBtn}
+            onClick={toggleFullscreen}
+            title={isFullscreen ? 'Exit fullscreen (F)' : 'Fullscreen (F)'}
+          >
+            {isFullscreen ? '⤡' : '⤢'}
+          </button>
           <button className={styles.infoBtn} onClick={() => setShowInfo(true)} title="About the double pendulum">ⓘ</button>
         </div>
       </div>

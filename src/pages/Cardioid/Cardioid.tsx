@@ -1,9 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Slider, Toggle, SelectControl,
   ControlPanel, ControlGroup, SimControls,
 } from '@/components/Controls';
 import { InfoDialog } from '@/components/InfoDialog';
+import { useFullscreen } from '@/hooks/useFullscreen';
+import { getNumParam, getStrParam, useShareUrl } from '@/hooks/useUrlParams';
+import { exportCanvasPng } from '@/lib/exportPng';
 import styles from './Cardioid.module.css';
 
 type ColorScheme = 'cardioid' | 'rainbow' | 'plasma' | 'mono';
@@ -21,6 +25,13 @@ const PRESETS = [
   { label: 'φ',         k: 1.6180339, desc: 'k = φ, golden ratio (non-repeating)' },
   { label: 'e',         k: Math.E,    desc: 'k = e ≈ 2.718, Euler\'s number' },
 ] as const;
+
+const COLOR_SCHEMES: ColorScheme[] = ['cardioid', 'rainbow', 'plasma', 'mono'];
+
+function getInitialColorScheme(searchParams: URLSearchParams): ColorScheme {
+  const value = getStrParam(searchParams, 'c', 'cardioid');
+  return COLOR_SCHEMES.includes(value as ColorScheme) ? value as ColorScheme : 'cardioid';
+}
 
 // ─── Color helpers ────────────────────────────────────────────────────────────
 
@@ -44,25 +55,39 @@ function lineColor(scheme: ColorScheme, t: number, alpha: number): string {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function Cardioid() {
-  const canvasRef  = useRef<HTMLCanvasElement>(null);
-  const rafRef     = useRef<number>(0);
-  const tPrevRef   = useRef<number>(0);
-  const kRef       = useRef<number>(2);        // live animated factor
-  const hudKRef    = useRef<HTMLSpanElement>(null); // updated in-place each frame
+  const [searchParams] = useSearchParams();
+  const initialFactor = getNumParam(searchParams, 'k', 2);
+  const initialNumPoints = Math.round(getNumParam(searchParams, 'n', 200));
+  const initialColorScheme = getInitialColorScheme(searchParams);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const rafRef = useRef<number>(0);
+  const tPrevRef = useRef<number>(0);
+  const kRef = useRef<number>(initialFactor);        // live animated factor
+  const hudKRef = useRef<HTMLSpanElement>(null); // updated in-place each frame
+  const copiedTimeoutRef = useRef<number | null>(null);
+
+  const { isFullscreen, toggleFullscreen } = useFullscreen(containerRef);
+  const { shareUrl } = useShareUrl();
 
   // ─── State ────────────────────────────────────────────────────────────────
 
-  const [numPoints,   setNumPoints]   = useState(200);
-  const [factor,      setFactor]      = useState(2);
+  const [numPoints,   setNumPoints]   = useState(() => initialNumPoints);
+  const [factor,      setFactor]      = useState(() => initialFactor);
   const [animate,     setAnimate]     = useState(true);
   const [animSpeed,   setAnimSpeed]   = useState(0.3);
-  const [colorScheme, setColorScheme] = useState<ColorScheme>('cardioid');
+  const [colorScheme, setColorScheme] = useState<ColorScheme>(() => initialColorScheme);
   const [lineOpacity, setLineOpacity] = useState(0.4);
   const [lineWidth,   setLineWidth]   = useState(1.0);
   const [showCircle,  setShowCircle]  = useState(true);
   const [showDots,    setShowDots]    = useState(false);
-  const [activePreset, setActivePreset] = useState<number | null>(0);
+  const [activePreset, setActivePreset] = useState<number | null>(() => {
+    const idx = PRESETS.findIndex((preset) => preset.k === initialFactor);
+    return idx >= 0 ? idx : null;
+  });
   const [showInfo, setShowInfo] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   // Mirror state to ref so animation loop always reads fresh values
   const pRef = useRef({
@@ -206,6 +231,26 @@ export default function Cardioid() {
     setActivePreset(0);
   }, []);
 
+  const exportPng = useCallback(() => {
+    if (!canvasRef.current) return;
+    exportCanvasPng(canvasRef.current, 'cardioid.png');
+  }, []);
+
+  const flashCopied = useCallback(() => {
+    setCopied(true);
+    if (copiedTimeoutRef.current !== null) window.clearTimeout(copiedTimeoutRef.current);
+    copiedTimeoutRef.current = window.setTimeout(() => setCopied(false), 2000);
+  }, []);
+
+  const handleShare = useCallback(() => {
+    shareUrl({ k: kRef.current, n: numPoints, c: colorScheme });
+    flashCopied();
+  }, [colorScheme, flashCopied, numPoints, shareUrl]);
+
+  useEffect(() => () => {
+    if (copiedTimeoutRef.current !== null) window.clearTimeout(copiedTimeoutRef.current);
+  }, []);
+
   // ─── Keyboard shortcuts ───────────────────────────────────────────────────
 
   useEffect(() => {
@@ -213,15 +258,16 @@ export default function Cardioid() {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.code === 'Space') { e.preventDefault(); setAnimate(a => !a); }
       if (e.code === 'KeyR')  { e.preventDefault(); reset(); }
+      if (e.code === 'KeyF')  { e.preventDefault(); toggleFullscreen(); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [reset]);
+  }, [reset, toggleFullscreen]);
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div className={styles.container}>
+    <div ref={containerRef} className={styles.container}>
       <canvas ref={canvasRef} className={styles.canvas} />
 
       {/* ─── Right-hand config sidebar ──────────────────────────────────── */}
@@ -317,6 +363,7 @@ export default function Cardioid() {
               <Toggle label="Point dots" value={showDots} onChange={setShowDots} />
             </ControlGroup>
           </ControlPanel>
+
         </div>
 
         <div className={styles.sidebarActions}>
@@ -324,6 +371,7 @@ export default function Cardioid() {
             running={animate}
             onToggle={() => setAnimate(a => !a)}
             onReset={reset}
+            onExport={exportPng}
           />
         </div>
       </div>
@@ -340,6 +388,16 @@ export default function Cardioid() {
           <span className={styles.hudHint}>
             {activePreset !== null ? PRESETS[activePreset].desc : 'times-table visualization'}
           </span>
+          <button className={styles.hudBtn} onClick={handleShare} title="Copy shareable link">
+            {copied ? '✓' : '⎘'}
+          </button>
+          <button
+            className={styles.hudBtn}
+            onClick={toggleFullscreen}
+            title={isFullscreen ? 'Exit fullscreen (F)' : 'Fullscreen (F)'}
+          >
+            {isFullscreen ? '⤡' : '⤢'}
+          </button>
           <button className={styles.infoBtn} onClick={() => setShowInfo(true)} title="About the cardioid">ⓘ</button>
         </div>
       </div>

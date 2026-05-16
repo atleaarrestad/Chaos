@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Slider, Toggle, ControlPanel, ControlGroup, SimControls } from '@/components/Controls';
+import { useFullscreen } from '@/hooks/useFullscreen';
+import { useShareUrl } from '@/hooks/useUrlParams';
+import { exportCanvasPng } from '@/lib/exportPng';
 import styles from './Conway.module.css';
 
 // ─── Grid constants ───────────────────────────────────────────────────────────
@@ -308,6 +311,7 @@ function renderGrid(
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function Conway() {
+  const containerRef   = useRef<HTMLDivElement>(null);
   const canvasRef      = useRef<HTMLCanvasElement>(null);
   const gridRef        = useRef<Grid>(emptyGrid());
   const ageGridRef     = useRef<AgeGrid>(emptyAgeGrid());
@@ -340,6 +344,11 @@ export default function Conway() {
   const [population,   setPopulation]   = useState(0);
   const [activePreset, setActivePreset] = useState<number>(-1);
   const [sparkData,    setSparkData]    = useState<number[]>([]);
+  const [copied, setCopied] = useState(false);
+  const copiedTimeoutRef = useRef<number | null>(null);
+
+  const { isFullscreen, toggleFullscreen } = useFullscreen(containerRef);
+  const { shareUrl } = useShareUrl();
 
   // Sync state → refs
   useEffect(() => { playingRef.current = playing; }, [playing]);
@@ -580,6 +589,26 @@ export default function Conway() {
 
   const togglePlay = useCallback(() => setPlaying(p => !p), []);
 
+  const exportPng = useCallback(() => {
+    if (!canvasRef.current) return;
+    exportCanvasPng(canvasRef.current, 'conway-game-of-life.png');
+  }, []);
+
+  const flashCopied = useCallback(() => {
+    setCopied(true);
+    if (copiedTimeoutRef.current !== null) window.clearTimeout(copiedTimeoutRef.current);
+    copiedTimeoutRef.current = window.setTimeout(() => setCopied(false), 2000);
+  }, []);
+
+  const handleShare = useCallback(() => {
+    shareUrl({});
+    flashCopied();
+  }, [flashCopied, shareUrl]);
+
+  useEffect(() => () => {
+    if (copiedTimeoutRef.current !== null) window.clearTimeout(copiedTimeoutRef.current);
+  }, []);
+
   // ─── Keyboard shortcuts ───────────────────────────────────────────────────
 
   useEffect(() => {
@@ -587,13 +616,14 @@ export default function Conway() {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
       if (e.code === 'KeyR')  { e.preventDefault(); handleClear(); }
+      if (e.code === 'KeyF')  { e.preventDefault(); toggleFullscreen(); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [togglePlay, handleClear]);
+  }, [togglePlay, handleClear, toggleFullscreen]);
 
   return (
-    <div className={styles.container}>
+    <div ref={containerRef} className={styles.container}>
       <canvas
         ref={canvasRef}
         className={styles.canvas}
@@ -672,6 +702,7 @@ export default function Conway() {
             </div>
           </ControlPanel>
 
+
         </div>
 
         <div className={styles.sidebarActions}>
@@ -679,6 +710,7 @@ export default function Conway() {
             running={playing}
             onToggle={togglePlay}
             onReset={handleClear}
+            onExport={exportPng}
           />
           <div className={styles.actionPanel}>
             <span className={styles.actionPanelLabel}>Actions</span>
@@ -816,6 +848,16 @@ export default function Conway() {
         </div>
         <div className={styles.hudRight}>
           <span className={styles.hudHint}>right-drag to pan · scroll to zoom · click/drag to draw</span>
+          <button className={styles.hudBtn} onClick={handleShare} title="Copy shareable link">
+            {copied ? '✓' : '⎘'}
+          </button>
+          <button
+            className={styles.hudBtn}
+            onClick={toggleFullscreen}
+            title={isFullscreen ? 'Exit fullscreen (F)' : 'Fullscreen (F)'}
+          >
+            {isFullscreen ? '⤡' : '⤢'}
+          </button>
           <button className={styles.infoBtn} onClick={() => setShowInfo(true)} title="About Conway's Game of Life">ⓘ</button>
         </div>
       </div>

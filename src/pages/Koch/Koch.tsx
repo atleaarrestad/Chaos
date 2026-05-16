@@ -1,9 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Slider, Toggle, SelectControl,
   ControlPanel, ControlGroup, SimControls,
 } from '@/components/Controls';
 import { InfoDialog } from '@/components/InfoDialog';
+import { useFullscreen } from '@/hooks/useFullscreen';
+import { getNumParam, getStrParam, getBoolParam, useShareUrl } from '@/hooks/useUrlParams';
+import { exportCanvasPng } from '@/lib/exportPng';
 import {
   detectWebGL,
   createKochRenderer,
@@ -72,12 +76,23 @@ export default function Koch() {
   // exactly once, not on every re-render (which would leak WebGL contexts).
   const [gpuSupported] = useState(() => detectWebGL());
 
+  // URL params
+  const [searchParams] = useSearchParams();
+  const initialDepth = Math.round(getNumParam(searchParams, 'd', DEFAULT.depth));
+  const initialSides = Math.round(getNumParam(searchParams, 's', DEFAULT.sides));
+  const initialAntiKoch = getBoolParam(searchParams, 'ak', DEFAULT.antiKoch);
+  const initialColorScheme = (getStrParam(searchParams, 'c', DEFAULT.colorScheme) === 'frost' ? 'frost' : 'mono') as ColorSchemeId;
+  const initialFillMode = (() => {
+    const v = getStrParam(searchParams, 'f', DEFAULT.fillMode);
+    return (v === 'both' || v === 'filled' || v === 'outline') ? v as FillModeId : DEFAULT.fillMode;
+  })();
+
   // Controls state
-  const [depth,       setDepth]       = useState(DEFAULT.depth);
-  const [sides,       setSides]       = useState(DEFAULT.sides);
-  const [antiKoch,    setAntiKoch]    = useState(DEFAULT.antiKoch);
-  const [colorScheme, setColorScheme] = useState<ColorSchemeId>(DEFAULT.colorScheme);
-  const [fillMode,    setFillMode]    = useState<FillModeId>(DEFAULT.fillMode);
+  const [depth,       setDepth]       = useState(initialDepth);
+  const [sides,       setSides]       = useState(initialSides);
+  const [antiKoch,    setAntiKoch]    = useState(initialAntiKoch);
+  const [colorScheme, setColorScheme] = useState<ColorSchemeId>(initialColorScheme);
+  const [fillMode,    setFillMode]    = useState<FillModeId>(initialFillMode);
   const [glow,        setGlow]        = useState(DEFAULT.glow);
   const [useGPU,      setUseGPU]      = useState(gpuSupported);
   const [rotate,      setRotate]      = useState(false);
@@ -104,6 +119,11 @@ export default function Koch() {
   // Active preset tracking
   const [activePreset, setActivePreset] = useState<number>(0);
   const [showInfo, setShowInfo] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const copiedTimeoutRef = useRef<number | null>(null);
+
+  const { isFullscreen, toggleFullscreen } = useFullscreen(containerRef);
+  const { shareUrl } = useShareUrl();
 
   // Synchronously mirror state into a ref so the RAF loop always reads the
   // latest values without waiting for a useEffect to fire after paint.
@@ -336,6 +356,27 @@ export default function Koch() {
     rotRef.current = 0;
   }, []);
 
+  const exportPng = useCallback(() => {
+    const canvas = useGPU ? glCanvasRef.current : cpuCanvasRef.current;
+    if (!canvas) return;
+    exportCanvasPng(canvas, 'koch-snowflake.png');
+  }, [useGPU]);
+
+  const flashCopied = useCallback(() => {
+    setCopied(true);
+    if (copiedTimeoutRef.current !== null) window.clearTimeout(copiedTimeoutRef.current);
+    copiedTimeoutRef.current = window.setTimeout(() => setCopied(false), 2000);
+  }, []);
+
+  const handleShare = useCallback(() => {
+    shareUrl({ d: depth, s: sides, ak: antiKoch, c: colorScheme, f: fillMode });
+    flashCopied();
+  }, [depth, sides, antiKoch, colorScheme, fillMode, flashCopied, shareUrl]);
+
+  useEffect(() => () => {
+    if (copiedTimeoutRef.current !== null) window.clearTimeout(copiedTimeoutRef.current);
+  }, []);
+
   // ─── Keyboard shortcuts ───────────────────────────────────────────────────
 
   useEffect(() => {
@@ -343,10 +384,11 @@ export default function Koch() {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.code === 'Space') { e.preventDefault(); setRotate(r => !r); }
       if (e.code === 'KeyR')  { e.preventDefault(); reset(); }
+      if (e.code === 'KeyF')  { e.preventDefault(); toggleFullscreen(); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [reset]);
+  }, [reset, toggleFullscreen]);
 
   const nVerts = VERT_COUNTS(sides, depth);
 
@@ -443,6 +485,7 @@ export default function Koch() {
               </ControlGroup>
             </ControlPanel>
           )}
+
         </div>
 
         {/* Actions */}
@@ -451,6 +494,7 @@ export default function Koch() {
             running={rotate}
             onToggle={() => setRotate(r => !r)}
             onReset={reset}
+            onExport={exportPng}
           />
         </div>
       </div>
@@ -470,6 +514,16 @@ export default function Koch() {
             <span className={styles.hudHint}>CPU</span>
           )}
           <span className={styles.hudHint}>scroll to zoom · drag to pan</span>
+          <button className={styles.hudBtn} onClick={handleShare} title="Copy shareable link">
+            {copied ? '✓' : '⎘'}
+          </button>
+          <button
+            className={styles.hudBtn}
+            onClick={toggleFullscreen}
+            title={isFullscreen ? 'Exit fullscreen (F)' : 'Fullscreen (F)'}
+          >
+            {isFullscreen ? '⤡' : '⤢'}
+          </button>
           <button className={styles.infoBtn} onClick={() => setShowInfo(true)} title="About Koch snowflake">ⓘ</button>
         </div>
       </div>

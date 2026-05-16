@@ -84,3 +84,7 @@
   pointer-events: none;
   user-select: none;
 }
+
+.keySpacer {
+  height: calc(var(--text-xs) * 1.6 + 4px);
+}

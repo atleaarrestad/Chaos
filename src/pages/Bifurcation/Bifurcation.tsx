@@ -1,9 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Slider, Toggle, SelectControl,
   ControlPanel, ControlGroup, SimControls,
 } from '@/components/Controls';
 import { InfoDialog } from '@/components/InfoDialog';
+import { useFullscreen } from '@/hooks/useFullscreen';
+import { getNumParam, getStrParam, useShareUrl } from '@/hooks/useUrlParams';
+import { exportCanvasPng } from '@/lib/exportPng';
 import {
   detectWebGL,
   createWebGLRenderer,
@@ -67,6 +71,7 @@ function fmtTick(v: number, step: number): string {
 
 export default function Bifurcation() {
   // Canvas refs — both always in DOM, one visible at a time
+  const containerRef = useRef<HTMLDivElement>(null);
   const glCanvasRef  = useRef<HTMLCanvasElement>(null);
   const cpuCanvasRef = useRef<HTMLCanvasElement>(null);
   const sidebarRef   = useRef<HTMLDivElement>(null);
@@ -76,15 +81,24 @@ export default function Bifurcation() {
   const dirtyRef = useRef(true);
   const glRef    = useRef<WebGLBifurcationRenderer | null>(null);
 
+  // URL params
+  const [searchParams] = useSearchParams();
+  const initialRMin = getNumParam(searchParams, 'r0', 2.5);
+  const initialRMax = getNumParam(searchParams, 'r1', 4.0);
+  const initialColorScheme = (() => {
+    const v = getStrParam(searchParams, 'c', 'cyan');
+    return (v === 'cyan' || v === 'heat' || v === 'plasma' || v === 'mono') ? v as ColorScheme : 'cyan';
+  })();
+
   // ─── State ──────────────────────────────────────────────────────────────
 
-  const [rMin,         setRMin]         = useState(2.5);
-  const [rMax,         setRMax]         = useState(4.0);
+  const [rMin,         setRMin]         = useState(initialRMin);
+  const [rMax,         setRMax]         = useState(initialRMax);
   const [yMin,         setYMin]         = useState(0);
   const [yMax,         setYMax]         = useState(1);
   const [iterations,   setIterations]   = useState(300);
   const [burnin,       setBurnin]       = useState(200);
-  const [colorScheme,  setColorScheme]  = useState<ColorScheme>('cyan');
+  const [colorScheme,  setColorScheme]  = useState<ColorScheme>(initialColorScheme);
   const [logScale,     setLogScale]     = useState(true);
   const [activePreset, setActivePreset] = useState<number | null>(0);
   const [showInfo, setShowInfo] = useState(false);
@@ -94,6 +108,11 @@ export default function Bifurcation() {
   const [hoverR,       setHoverR]       = useState<number | null>(null);
   const [hoverX,       setHoverX]       = useState<number | null>(null);
   const [sidebarOpen,  setSidebarOpen]  = useState(true);
+  const [copied, setCopied] = useState(false);
+  const copiedTimeoutRef = useRef<number | null>(null);
+
+  const { isFullscreen, toggleFullscreen } = useFullscreen(containerRef);
+  const { shareUrl } = useShareUrl();
 
   // Drag-to-zoom selection rect (CSS pixels relative to the interaction layer)
   const dragStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -395,16 +414,38 @@ export default function Bifurcation() {
     setZoomHistory([]);
   }, []);
 
+  const exportPng = useCallback(() => {
+    const canvas = useGPU && gpuAvailable ? glCanvasRef.current : cpuCanvasRef.current;
+    if (!canvas) return;
+    exportCanvasPng(canvas, 'bifurcation.png');
+  }, [useGPU, gpuAvailable]);
+
+  const flashCopied = useCallback(() => {
+    setCopied(true);
+    if (copiedTimeoutRef.current !== null) window.clearTimeout(copiedTimeoutRef.current);
+    copiedTimeoutRef.current = window.setTimeout(() => setCopied(false), 2000);
+  }, []);
+
+  const handleShare = useCallback(() => {
+    shareUrl({ r0: rMin, r1: rMax, c: colorScheme });
+    flashCopied();
+  }, [rMin, rMax, colorScheme, flashCopied, shareUrl]);
+
+  useEffect(() => () => {
+    if (copiedTimeoutRef.current !== null) window.clearTimeout(copiedTimeoutRef.current);
+  }, []);
+
   // ─── Keyboard shortcuts ───────────────────────────────────────────────────
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.code === 'KeyR') { e.preventDefault(); reset(); }
+      if (e.code === 'KeyF') { e.preventDefault(); toggleFullscreen(); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [reset]);
+  }, [reset, toggleFullscreen]);
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
@@ -414,7 +455,7 @@ export default function Bifurcation() {
   const xStep = xTicks.length > 1 ? xTicks[1] - xTicks[0] : yMax - yMin;
 
   return (
-    <div className={styles.container}>
+    <div ref={containerRef} className={styles.container}>
       {/* GPU canvas */}
       <canvas
         ref={glCanvasRef}
@@ -578,6 +619,7 @@ export default function Bifurcation() {
               )}
             </ControlGroup>
           </ControlPanel>
+
         </div>
 
         <div className={styles.sidebarActions}>
@@ -586,7 +628,7 @@ export default function Bifurcation() {
               ← Back
             </button>
           )}
-          <SimControls onReset={reset} />
+          <SimControls onReset={reset} onExport={exportPng} />
         </div>
       </div>
 
@@ -605,6 +647,16 @@ export default function Bifurcation() {
           <span className={styles.hudHint}>
             {activePreset !== null ? PRESETS[activePreset].desc : 'drag to zoom · scroll to zoom · logistic map x → r·x·(1−x)'}
           </span>
+          <button className={styles.hudBtn} onClick={handleShare} title="Copy shareable link">
+            {copied ? '✓' : '⎘'}
+          </button>
+          <button
+            className={styles.hudBtn}
+            onClick={toggleFullscreen}
+            title={isFullscreen ? 'Exit fullscreen (F)' : 'Fullscreen (F)'}
+          >
+            {isFullscreen ? '⤡' : '⤢'}
+          </button>
           <button className={styles.infoBtn} onClick={() => setShowInfo(true)} title="About the bifurcation diagram">ⓘ</button>
         </div>
       </div>

@@ -7,11 +7,13 @@ interface SimControlsProps {
   onToggle?: () => void;
   /** Called when the reset button is clicked. */
   onReset: () => void;
+  /** Called when the PNG export button is clicked. */
+  onExport?: () => void;
   /** Disable the play/pause button (e.g. feature requires GPU). */
   toggleDisabled?: boolean;
 }
 
-export default function SimControls({ running, onToggle, onReset, toggleDisabled }: SimControlsProps) {
+export default function SimControls({ running, onToggle, onReset, onExport, toggleDisabled }: SimControlsProps) {
   const hasAnimation = onToggle !== undefined;
 
   return (
@@ -43,6 +45,20 @@ export default function SimControls({ running, onToggle, onReset, toggleDisabled
         </button>
         <kbd className={styles.key}>R</kbd>
       </div>
+      {onExport && (
+        <div className={styles.btnCol}>
+          <button
+            type="button"
+            className={styles.btn}
+            onClick={onExport}
+            title="Export PNG"
+          >
+            <span className={styles.icon}>↓</span>
+            <span className={styles.label}>PNG</span>
+          </button>
+          <span className={styles.keySpacer} aria-hidden="true" />
+        </div>
+      )}
     </div>
   );
 }
