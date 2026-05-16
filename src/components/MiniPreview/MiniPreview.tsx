@@ -80,7 +80,7 @@ const lorenzRenderer: Renderer = (canvas) => {
     ctx.arc(hx, hy, 7 * dpr, 0, Math.PI * 2);
     ctx.fill();
 
-    head = (head + 5) % N;
+    head = (head + 1) % N;
     raf = requestAnimationFrame(frame);
   }
 
@@ -115,12 +115,13 @@ const mandelbrotRenderer: Renderer = (canvas) => {
       }
       const idx = (py * w + px) * 4;
       if (n === MAX) {
-        data[idx] = 11; data[idx+1] = 7; data[idx+2] = 20; data[idx+3] = 255;
+        data[idx] = 8; data[idx+1] = 4; data[idx+2] = 22; data[idx+3] = 255;
       } else {
-        const t = n / MAX, t2 = t * t;
-        data[idx]   = Math.round(168 * t2);
-        data[idx+1] = Math.round(40 * t2 * t);
-        data[idx+2] = Math.round(247 * t);
+        const t = Math.sqrt(n / MAX);   // sqrt brightens near-boundary bands
+        const t2 = t * t;
+        data[idx]   = Math.round(Math.min(255, 20  + 235 * t2));       // R: dark → bright
+        data[idx+1] = Math.round(Math.min(255, 5   + 190 * t2 * t));   // G: subtle accent
+        data[idx+2] = Math.round(Math.min(255, 80  + 175 * t));        // B: always-visible base
         data[idx+3] = 255;
       }
     }
@@ -144,14 +145,10 @@ const cardioidRenderer: Renderer = (canvas) => {
   const ctx = canvas.getContext('2d')!;
 
   const N = 200;
+  const TAU = 2 * Math.PI;
   const cx = W / 2, cy = H / 2;
   const R  = Math.min(W * 0.44, H * 0.44);
   let mult = 2.0, frameN = 0, raf: number;
-
-  const pts = Array.from({ length: N }, (_, i) => {
-    const a = (2 * Math.PI * i) / N;
-    return [cx + R * Math.cos(a), cy + R * Math.sin(a)] as const;
-  });
 
   function draw() {
     ctx.fillStyle = '#0b0b18';
@@ -160,21 +157,22 @@ const cardioidRenderer: Renderer = (canvas) => {
     ctx.strokeStyle = 'rgba(251,146,60,0.16)';
     ctx.lineWidth = 0.8 * dpr;
     ctx.beginPath();
-    ctx.arc(cx, cy, R, 0, Math.PI * 2);
+    ctx.arc(cx, cy, R, 0, TAU);
     ctx.stroke();
 
     ctx.strokeStyle = 'rgba(251,146,60,0.44)';
     ctx.lineWidth = 0.65 * dpr;
     ctx.beginPath();
     for (let i = 0; i < N; i++) {
-      const j = Math.round((i * mult) % N);
-      ctx.moveTo(pts[i][0], pts[i][1]);
-      ctx.lineTo(pts[j][0], pts[j][1]);
+      const a1 = (TAU * i) / N;
+      const a2 = (TAU * i * mult) / N;
+      ctx.moveTo(cx + R * Math.cos(a1), cy + R * Math.sin(a1));
+      ctx.lineTo(cx + R * Math.cos(a2), cy + R * Math.sin(a2));
     }
     ctx.stroke();
 
     frameN++;
-    mult = 2.0 + (Math.sin(frameN * 0.007) + 1) * 0.75;
+    mult = 2.0 + (Math.sin(frameN * 0.004) + 1) * 0.8;
     raf = requestAnimationFrame(draw);
   }
 
@@ -243,9 +241,9 @@ const kochRenderer: Renderer = (canvas) => {
   const H = (canvas.height = Math.round(canvas.offsetHeight * dpr));
   const ctx = canvas.getContext('2d')!;
 
-  const s  = Math.min(W * 0.72, H * 1.55);
+  const s  = Math.min(W * 0.80, H * 0.80);
   const tH = s * Math.sqrt(3) / 2;
-  const cx = W / 2, cy = H * 0.52 + tH / 6;
+  const cx = W / 2, cy = H / 2;
   const v0 = [cx - s/2, cy + tH/3] as const;
   const v1 = [cx + s/2, cy + tH/3] as const;
   const v2 = [cx,        cy - 2*tH/3] as const;
@@ -284,7 +282,8 @@ const pendulumRenderer: Renderer = (canvas) => {
   const ctx = canvas.getContext('2d')!;
 
   const g = 9.8;
-  let θ1 = 2.1, ω1 = 0.0, θ2 = 2.4, ω2 = 0.0;
+  const RAD = Math.PI / 180;
+  let θ1 = 50 * RAD, ω1 = 0.0, θ2 = -20 * RAD, ω2 = 0.0;
   const pivX = W * 0.5, pivY = H * 0.18;
   const arm  = Math.min(W, H) * 0.34;
   const TRAIL = 350;
@@ -311,7 +310,7 @@ const pendulumRenderer: Renderer = (canvas) => {
   }
 
   function frame() {
-    for (let i = 0; i < 4; i++) step(0.016);
+    step(0.006);
 
     const b1x = pivX + arm * Math.sin(θ1);
     const b1y = pivY + arm * Math.cos(θ1);
