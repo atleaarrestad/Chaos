@@ -188,7 +188,7 @@ interface LiveParams {
 
 export default function ThreeBody() {
   const [searchParams] = useSearchParams();
-  const initialPreset = Math.round(getNumParam(searchParams, 'p', 0));
+  const initialPreset = Math.round(getNumParam(searchParams, 'p', 1));
   const validPreset = initialPreset >= 0 && initialPreset < PRESETS.length ? initialPreset : 0;
 
   const [running,      setRunning]      = useState(true);
