@@ -613,17 +613,6 @@ export default function ThreeBody() {
     return () => ro.disconnect();
   }, []);
 
-  // ── Keyboard shortcuts ────────────────────────────────────────────────────────
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      if (e.code === 'Space') { e.preventDefault(); setRunning(r => !r); }
-      if (e.code === 'KeyR')  { e.preventDefault(); resetSimulation(); }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [resetSimulation]);
-
   // ── Canvas pan & zoom ─────────────────────────────────────────────────────────
   useEffect(() => {
     const canvas = canvasRef.current;
