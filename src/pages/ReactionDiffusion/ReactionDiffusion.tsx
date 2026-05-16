@@ -6,13 +6,12 @@ import { InfoDialog } from '@/components/InfoDialog';
 import { useFullscreen } from '@/hooks/useFullscreen';
 import ExportDialog from '../../components/ExportDialog/ExportDialog';
 import { exportImage } from '../../lib/exportImage';
+import { ReactionDiffusionGPU, SIM_W, SIM_H } from './reaction-diffusion-gpu';
 import styles from './ReactionDiffusion.module.css';
 
 // ─── Simulation constants ─────────────────────────────────────────────────────
 
-const SIM_W = 256;
-const SIM_H = 256;
-const BG    = '#030d0d';
+const BG = '#030d0d';
 
 // ─── Presets ──────────────────────────────────────────────────────────────────
 
@@ -109,44 +108,6 @@ function buildInitial(preset: Preset): { u: Float32Array; v: Float32Array } {
   return { u, v };
 }
 
-// ─── Gray-Scott step ──────────────────────────────────────────────────────────
-
-function gsStep(
-  u: Float32Array, v: Float32Array,
-  nu: Float32Array, nv: Float32Array,
-  f: number, k: number, Du: number, Dv: number,
-  W: number, H: number,
-) {
-  for (let y = 0; y < H; y++) {
-    const yW  = y * W;
-    const ynW = (y === 0 ? H - 1 : y - 1) * W;
-    const ysW = (y === H - 1 ? 0 : y + 1) * W;
-
-    for (let x = 0; x < W; x++) {
-      const i  = yW + x;
-      const xL = x === 0     ? W - 1 : x - 1;
-      const xR = x === W - 1 ? 0     : x + 1;
-
-      const ui = u[i];
-      const vi = v[i];
-
-      const lapU = u[yW + xL] + u[yW + xR] + u[ynW + x] + u[ysW + x] - 4 * ui;
-      const lapV = v[yW + xL] + v[yW + xR] + v[ynW + x] + v[ysW + x] - 4 * vi;
-
-      const uvv = ui * vi * vi;
-
-      let nu_ = ui + Du * lapU - uvv + f * (1 - ui);
-      let nv_ = vi + Dv * lapV + uvv - (f + k) * vi;
-
-      if (nu_ < 0) nu_ = 0; else if (nu_ > 1) nu_ = 1;
-      if (nv_ < 0) nv_ = 0; else if (nv_ > 1) nv_ = 1;
-
-      nu[i] = nu_;
-      nv[i] = nv_;
-    }
-  }
-}
-
 // ─── Live params ref type ─────────────────────────────────────────────────────
 
 interface LiveParams {
@@ -175,21 +136,15 @@ export default function ReactionDiffusion() {
   const [showExport,    setShowExport]    = useState(false);
   const [generation,    setGeneration]    = useState(0);
   const [showGrid,      setShowGrid]      = useState(false);
+  const [gpuError,      setGpuError]      = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef    = useRef<HTMLCanvasElement>(null);
-  const offRef       = useRef<OffscreenCanvas | null>(null);
-  const offCtxRef    = useRef<OffscreenCanvasRenderingContext2D | null>(null);
-  const imgDataRef   = useRef<ImageData | null>(null);
+  const gpuRef       = useRef<ReactionDiffusionGPU | null>(null);
 
-  const uRef  = useRef(new Float32Array(SIM_W * SIM_H).fill(1));
-  const vRef  = useRef(new Float32Array(SIM_W * SIM_H));
-  const nuRef = useRef(new Float32Array(SIM_W * SIM_H));
-  const nvRef = useRef(new Float32Array(SIM_W * SIM_H));
-
-  const rafRef   = useRef(0);
-  const genRef   = useRef(0);
-  const pRef     = useRef<LiveParams>({ running, f, k, Du, Dv, stepsFrame, brushSize, showGrid });
+  const rafRef     = useRef(0);
+  const genRef     = useRef(0);
+  const pRef       = useRef<LiveParams>({ running, f, k, Du, Dv, stepsFrame, brushSize, showGrid });
   const isPainting = useRef(false);
 
   const { isFullscreen, toggleFullscreen } = useFullscreen(containerRef);
@@ -199,47 +154,20 @@ export default function ReactionDiffusion() {
     pRef.current = { running, f, k, Du, Dv, stepsFrame, brushSize, showGrid };
   }, [running, f, k, Du, Dv, stepsFrame, brushSize, showGrid]);
 
-  // ── Initialise offscreen canvas + image data ────────────────────────────────
-  useEffect(() => {
-    const off = new OffscreenCanvas(SIM_W, SIM_H);
-    offRef.current = off;
-    offCtxRef.current = off.getContext('2d')!;
-    imgDataRef.current = new ImageData(SIM_W, SIM_H);
-  }, []);
-
-  // ── Reset to a preset ───────────────────────────────────────────────────────
-  const reset = useCallback((presetIdx = activePreset) => {
-    const preset = PRESETS[presetIdx];
-    const { u: initU, v: initV } = buildInitial(preset);
-    uRef.current.set(initU);
-    vRef.current.set(initV);
-    nuRef.current.fill(0);
-    nvRef.current.fill(0);
-    genRef.current = 0;
-    setGeneration(0);
-  }, [activePreset]);
-
-  const goToPreset = useCallback((idx: number) => {
-    const preset = PRESETS[idx];
-    setActivePreset(idx);
-    setF(preset.f);
-    setK(preset.k);
-    setDu(preset.Du);
-    setDv(preset.Dv);
-    pRef.current = { ...pRef.current, f: preset.f, k: preset.k, Du: preset.Du, Dv: preset.Dv };
-    const { u: initU, v: initV } = buildInitial(preset);
-    uRef.current.set(initU);
-    vRef.current.set(initV);
-    nuRef.current.fill(0);
-    nvRef.current.fill(0);
-    genRef.current = 0;
-    setGeneration(0);
-  }, []);
-
-  // ── RAF loop ─────────────────────────────────────────────────────────────────
+  // ── RAF loop (initialises GPU + runs simulation) ────────────────────────────
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+
+    let gpu: ReactionDiffusionGPU;
+    try {
+      const { u: initU, v: initV } = buildInitial(PRESETS[0]);
+      gpu = new ReactionDiffusionGPU(initU, initV);
+      gpuRef.current = gpu;
+    } catch (e) {
+      setGpuError((e as Error).message);
+      return;
+    }
 
     let lastGenUpdate = 0;
 
@@ -248,44 +176,17 @@ export default function ReactionDiffusion() {
       const p = pRef.current;
 
       if (p.running) {
-        const steps = p.stepsFrame;
-        for (let s = 0; s < steps; s++) {
-          gsStep(
-            uRef.current, vRef.current,
-            nuRef.current, nvRef.current,
-            p.f, p.k, p.Du, p.Dv,
-            SIM_W, SIM_H,
-          );
-          // Swap buffers
-          const tmpU = uRef.current; uRef.current = nuRef.current; nuRef.current = tmpU;
-          const tmpV = vRef.current; vRef.current = nvRef.current; nvRef.current = tmpV;
-          genRef.current++;
-        }
+        gpu.step({ f: p.f, k: p.k, Du: p.Du, Dv: p.Dv }, p.stepsFrame);
+        genRef.current += p.stepsFrame;
       }
 
-      // Render
-      const off = offRef.current;
-      const offCtx = offCtxRef.current;
-      const imgData = imgDataRef.current;
-      if (!off || !offCtx || !imgData) return;
-
-      const { data } = imgData;
-      const v = vRef.current;
-      for (let i = 0; i < SIM_W * SIM_H; i++) {
-        const t = v[i];
-        const idx = i << 2;
-        data[idx]     = Math.round(3  + t * 20);
-        data[idx + 1] = Math.round(13 + t * 195);
-        data[idx + 2] = Math.round(13 + t * 178);
-        data[idx + 3] = 255;
-      }
-      offCtx.putImageData(imgData, 0, 0);
+      gpu.render();
 
       const ctx = canvas!.getContext('2d');
       if (!ctx) return;
       const W = canvas!.width, H = canvas!.height;
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(off, 0, 0, W, H);
+      ctx.drawImage(gpu.canvas, 0, 0, W, H);
 
       // Grid overlay
       if (p.showGrid) {
@@ -299,22 +200,46 @@ export default function ReactionDiffusion() {
         ctx.stroke();
       }
 
-      // Throttle gen counter update
       if (genRef.current - lastGenUpdate >= 50) {
         lastGenUpdate = genRef.current;
         setGeneration(genRef.current);
       }
     }
 
-    // Initial seed
-    const preset = PRESETS[0];
-    const { u: initU, v: initV } = buildInitial(preset);
-    uRef.current.set(initU);
-    vRef.current.set(initV);
-
     rafRef.current = requestAnimationFrame(frame);
-    return () => cancelAnimationFrame(rafRef.current);
+    return () => {
+      cancelAnimationFrame(rafRef.current);
+      gpu.dispose();
+      gpuRef.current = null;
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Reset / preset ──────────────────────────────────────────────────────────
+  const reset = useCallback((presetIdx = activePreset) => {
+    const gpu = gpuRef.current;
+    if (!gpu) return;
+    const safeIdx = presetIdx >= 0 ? presetIdx : 0;
+    const { u: initU, v: initV } = buildInitial(PRESETS[safeIdx]);
+    gpu.reset(initU, initV);
+    genRef.current = 0;
+    setGeneration(0);
+  }, [activePreset]);
+
+  const goToPreset = useCallback((idx: number) => {
+    const gpu = gpuRef.current;
+    if (!gpu) return;
+    const preset = PRESETS[idx];
+    setActivePreset(idx);
+    setF(preset.f);
+    setK(preset.k);
+    setDu(preset.Du);
+    setDv(preset.Dv);
+    pRef.current = { ...pRef.current, f: preset.f, k: preset.k, Du: preset.Du, Dv: preset.Dv };
+    const { u: initU, v: initV } = buildInitial(preset);
+    gpu.reset(initU, initV);
+    genRef.current = 0;
+    setGeneration(0);
   }, []);
 
   // ── Canvas resize ───────────────────────────────────────────────────────────
@@ -354,8 +279,10 @@ export default function ReactionDiffusion() {
   }
 
   function paint(canvas: HTMLCanvasElement, clientX: number, clientY: number) {
+    const gpu = gpuRef.current;
+    if (!gpu) return;
     const { sx, sy } = canvasToSim(canvas, clientX, clientY);
-    seedBlob(uRef.current, vRef.current, sx, sy, pRef.current.brushSize, SIM_W, SIM_H);
+    gpu.seedAt(sx, sy, pRef.current.brushSize);
   }
 
   function onPointerDown(e: React.PointerEvent<HTMLCanvasElement>) {
@@ -381,6 +308,12 @@ export default function ReactionDiffusion() {
 
   return (
     <div ref={containerRef} className={styles.container} style={{ background: BG }}>
+      {/* ── GPU error fallback ──────────────────────────────────────────────── */}
+      {gpuError && (
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
+          <p>GPU simulation unavailable:<br /><span style={{ color: 'var(--col-reaction)', fontFamily: 'var(--font-mono)' }}>{gpuError}</span></p>
+        </div>
+      )}
       {/* ── Canvas ─────────────────────────────────────────────────────────── */}
       <canvas
         ref={canvasRef}
@@ -423,7 +356,7 @@ export default function ReactionDiffusion() {
 
           <ControlPanel title="Display">
             <ControlGroup>
-              <Slider label="Steps / frame" value={stepsFrame} onChange={v => setStepsFrame(v)} min={1} max={24} step={1} />
+              <Slider label="Steps / frame" value={stepsFrame} onChange={v => setStepsFrame(v)} min={1} max={48} step={1} />
               <Slider label="Brush size"    value={brushSize}  onChange={v => setBrushSize(v)}  min={2} max={20} step={1} />
               <Toggle label="Grid overlay"  value={showGrid}   onChange={setShowGrid} />
             </ControlGroup>
