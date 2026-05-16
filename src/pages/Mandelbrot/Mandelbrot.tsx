@@ -5,6 +5,9 @@ import {
   ControlPanel, ControlGroup, SimControls,
 } from '@/components/Controls';
 import { InfoDialog } from '@/components/InfoDialog';
+import ExportDialog from '../../components/ExportDialog/ExportDialog';
+import type { ExportFormat } from '../../lib/exportImage';
+import { downloadCanvas } from '../../lib/exportImage';
 import { useFullscreen } from '@/hooks/useFullscreen';
 import { getNumParam, getStrParam, useShareUrl } from '@/hooks/useUrlParams';
 import type { PaletteId } from './mandelbrot.worker';
@@ -144,6 +147,7 @@ export default function Mandelbrot() {
   const savingRef              = useRef(false);
   const [saving,         setSaving]         = useState(false);
   const [showInfo,       setShowInfo]       = useState(false);
+  const [showExport,     setShowExport]     = useState(false);
   const [animating,        setAnimating]        = useState(false);
   const [animMode,         setAnimMode]         = useState<'zoom' | 'julia' | 'both'>('zoom');
   const [animSpeed,        setAnimSpeed]        = useState(0.5);
@@ -830,13 +834,11 @@ export default function Mandelbrot() {
     }
   }, [cancelRender, renderGPU, startRender]);
 
-  const saveImage = useCallback(async (targetW: number) => {
+  const saveImage = useCallback(async (targetW: number, targetH: number, format: ExportFormat) => {
     if (savingRef.current) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const aspect  = canvas.height / canvas.width;
-    const targetH = Math.round(targetW * aspect);
     const cp      = cpRef.current;
     const v       = view.current;
 
@@ -902,10 +904,7 @@ export default function Mandelbrot() {
         });
       }
 
-      const a    = document.createElement('a');
-      a.href     = offscreen.toDataURL('image/png');
-      a.download = `mandelbrot-${targetW}px.png`;
-      a.click();
+      downloadCanvas(offscreen, format, 'mandelbrot');
     } finally {
       savingRef.current = false;
       setSaving(false);
@@ -1099,28 +1098,22 @@ export default function Mandelbrot() {
           running={animating}
           onToggle={toggleAnimation}
           onReset={() => { setAnimating(false); reset(); }}
+          onExport={() => setShowExport(true)}
           toggleDisabled={!gpuAvailable}
         />
-        <div className={styles.saveGroup}>
-          <span className={styles.saveGroupLabel}>
-            {saving ? 'Saving…' : '↓ Save PNG'}
-          </span>
-          <div className={styles.saveResRow}>
-            {([['8K', 8192], ['4K', 4096], ['2K', 2048], ['1K', 1024]] as const).map(([label, w]) => (
-              <button
-                key={label}
-                className={styles.saveResBtn}
-                type="button"
-                disabled={saving}
-                onClick={() => saveImage(w)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
         </div>
       </div>
+
+      {showExport && (
+        <ExportDialog
+          onClose={() => setShowExport(false)}
+          isRendering={saving}
+          onDownload={async ({ width, height, format }) => {
+            await saveImage(width, height, format);
+            setShowExport(false);
+          }}
+        />
+      )}
 
       <div className={styles.hud}>
         <div className={styles.hudLeft}>

@@ -7,7 +7,8 @@ import {
 import { InfoDialog } from '@/components/InfoDialog';
 import { useFullscreen } from '@/hooks/useFullscreen';
 import { getNumParam, getStrParam, useShareUrl } from '@/hooks/useUrlParams';
-import { exportCanvasPng } from '@/lib/exportPng';
+import ExportDialog from '../../components/ExportDialog/ExportDialog';
+import { exportImage } from '../../lib/exportImage';
 import {
   detectWebGL,
   createWebGLRenderer,
@@ -102,6 +103,7 @@ export default function Bifurcation() {
   const [logScale,     setLogScale]     = useState(true);
   const [activePreset, setActivePreset] = useState<number | null>(0);
   const [showInfo, setShowInfo] = useState(false);
+  const [showExport, setShowExport] = useState(false);
   const [gpuAvailable, setGpuAvailable] = useState(false);
   const [useGPU,       setUseGPU]       = useState(false);
   const [zoomHistory,  setZoomHistory]  = useState<ZoomState[]>([]);
@@ -414,11 +416,6 @@ export default function Bifurcation() {
     setZoomHistory([]);
   }, []);
 
-  const exportPng = useCallback(() => {
-    const canvas = useGPU && gpuAvailable ? glCanvasRef.current : cpuCanvasRef.current;
-    if (!canvas) return;
-    exportCanvasPng(canvas, 'bifurcation.png');
-  }, [useGPU, gpuAvailable]);
 
   const flashCopied = useCallback(() => {
     setCopied(true);
@@ -628,9 +625,21 @@ export default function Bifurcation() {
               ← Back
             </button>
           )}
-          <SimControls onReset={reset} onExport={exportPng} />
+          <SimControls onReset={reset} onExport={() => setShowExport(true)} />
         </div>
       </div>
+
+      {showExport && (
+        <ExportDialog
+          onClose={() => setShowExport(false)}
+          onDownload={({ width, height, format }) => {
+            const canvas = (useGPU ? glCanvasRef : cpuCanvasRef).current;
+            if (!canvas) return;
+            exportImage(canvas, width, height, format, 'bifurcation');
+            setShowExport(false);
+          }}
+        />
+      )}
 
       {/* ─── HUD ────────────────────────────────────────────────────────── */}
       <div className={styles.hud}>

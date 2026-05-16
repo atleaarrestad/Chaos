@@ -7,7 +7,8 @@ import {
 import { InfoDialog } from '@/components/InfoDialog';
 import { useFullscreen } from '@/hooks/useFullscreen';
 import { getNumParam, useShareUrl } from '@/hooks/useUrlParams';
-import { exportCanvasPng } from '@/lib/exportPng';
+import ExportDialog from '../../components/ExportDialog/ExportDialog';
+import { exportImage } from '../../lib/exportImage';
 import styles from './ThreeBody.module.css';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -199,6 +200,7 @@ export default function ThreeBody() {
   const [G,            setG]            = useState(PRESETS[validPreset].G);
   const [activePreset, setActivePreset] = useState<number | null>(validPreset);
   const [showInfo,     setShowInfo]     = useState(false);
+  const [showExport, setShowExport] = useState(false);
   const [selectedBody, setSelectedBody] = useState(0);
   const [showCoM,      setShowCoM]      = useState(false);
   const [masses,       setMasses]       = useState<[number, number, number]>(
@@ -311,10 +313,6 @@ export default function ThreeBody() {
     clearTrails();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const exportPng = useCallback(() => {
-    if (!canvasRef.current) return;
-    exportCanvasPng(canvasRef.current, 'three-body.png');
-  }, []);
 
   const flashCopied = useCallback(() => {
     setCopied(true);
@@ -828,10 +826,22 @@ export default function ThreeBody() {
             running={running}
             onToggle={() => setRunning(r => !r)}
             onReset={resetSimulation}
-            onExport={exportPng}
+            onExport={() => setShowExport(true)}
           />
         </div>
       </div>
+
+      {showExport && (
+        <ExportDialog
+          onClose={() => setShowExport(false)}
+          onDownload={({ width, height, format }) => {
+            const canvas = canvasRef.current;
+            if (!canvas) return;
+            exportImage(canvas, width, height, format, 'three-body');
+            setShowExport(false);
+          }}
+        />
+      )}
 
       {/* ── HUD ───────────────────────────────────────────────────────────────── */}
       <div className={styles.hud}>

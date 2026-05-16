@@ -7,7 +7,8 @@ import {
 import { InfoDialog } from '@/components/InfoDialog';
 import { useFullscreen } from '@/hooks/useFullscreen';
 import { getNumParam, getStrParam, getBoolParam, useShareUrl } from '@/hooks/useUrlParams';
-import { exportCanvasPng } from '@/lib/exportPng';
+import ExportDialog from '../../components/ExportDialog/ExportDialog';
+import { exportImage } from '../../lib/exportImage';
 import {
   detectWebGL,
   createKochRenderer,
@@ -119,6 +120,7 @@ export default function Koch() {
   // Active preset tracking
   const [activePreset, setActivePreset] = useState<number>(0);
   const [showInfo, setShowInfo] = useState(false);
+  const [showExport, setShowExport] = useState(false);
   const [copied, setCopied] = useState(false);
   const copiedTimeoutRef = useRef<number | null>(null);
 
@@ -356,11 +358,6 @@ export default function Koch() {
     rotRef.current = 0;
   }, []);
 
-  const exportPng = useCallback(() => {
-    const canvas = useGPU ? glCanvasRef.current : cpuCanvasRef.current;
-    if (!canvas) return;
-    exportCanvasPng(canvas, 'koch-snowflake.png');
-  }, [useGPU]);
 
   const flashCopied = useCallback(() => {
     setCopied(true);
@@ -494,10 +491,22 @@ export default function Koch() {
             running={rotate}
             onToggle={() => setRotate(r => !r)}
             onReset={reset}
-            onExport={exportPng}
+            onExport={() => setShowExport(true)}
           />
         </div>
       </div>
+
+      {showExport && (
+        <ExportDialog
+          onClose={() => setShowExport(false)}
+          onDownload={({ width, height, format }) => {
+            const canvas = (useGPU ? glCanvasRef : cpuCanvasRef).current;
+            if (!canvas) return;
+            exportImage(canvas, width, height, format, 'koch-snowflake');
+            setShowExport(false);
+          }}
+        />
+      )}
 
       {/* HUD */}
       <div className={styles.hud}>

@@ -9,7 +9,8 @@ import { InfoDialog } from '@/components/InfoDialog';
 import { detectWebGL2 } from '@/lib/gpu/context';
 import { useFullscreen } from '@/hooks/useFullscreen';
 import { getNumParam, useShareUrl } from '@/hooks/useUrlParams';
-import { exportCanvasPng } from '@/lib/exportPng';
+import ExportDialog from '../../components/ExportDialog/ExportDialog';
+import { exportImage } from '../../lib/exportImage';
 import styles from './DoublePendulum.module.css';
 import { DoublePendulumGPU, STEPS_PER_FRAME, type DoublePendulumParams, type ColorMode } from './double-pendulum-gpu';
 
@@ -179,6 +180,7 @@ export default function DoublePendulum() {
   const [gpuAvailable,  setGpuAvailable]  = useState(false);
   const [activePreset,  setActivePreset]  = useState<number | null>(1); // 1 = Classic (matches defaults)
   const [showInfo, setShowInfo] = useState(false);
+  const [showExport, setShowExport] = useState(false);
   const [copied, setCopied] = useState(false);
   const copiedTimeoutRef = useRef<number | null>(null);
 
@@ -256,10 +258,6 @@ export default function DoublePendulum() {
   }, [gpuParams]);
 
   // ─── Keyboard shortcuts ───────────────────────────────────────────────────
-
-  const exportPng = useCallback(() => {
-    if (canvasRef.current) exportCanvasPng(canvasRef.current, 'double-pendulum.png');
-  }, []);
 
   const handleShare = useCallback(() => {
     shareUrl({
@@ -825,7 +823,7 @@ export default function DoublePendulum() {
             running={running}
             onToggle={() => setRunning(r => !r)}
             onReset={resetSimulation}
-            onExport={exportPng}
+            onExport={() => setShowExport(true)}
           />
         </div>
       </div>
@@ -855,6 +853,18 @@ export default function DoublePendulum() {
             </div>
           </div>
         </div>
+      )}
+
+      {showExport && (
+        <ExportDialog
+          onClose={() => setShowExport(false)}
+          onDownload={({ width, height, format }) => {
+            const canvas = canvasRef.current;
+            if (!canvas) return;
+            exportImage(canvas, width, height, format, 'double-pendulum');
+            setShowExport(false);
+          }}
+        />
       )}
 
       {/* ── HUD ──────────────────────────────────────────────────────────────── */}

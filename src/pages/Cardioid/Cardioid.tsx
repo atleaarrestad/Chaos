@@ -7,7 +7,8 @@ import {
 import { InfoDialog } from '@/components/InfoDialog';
 import { useFullscreen } from '@/hooks/useFullscreen';
 import { getNumParam, getStrParam, useShareUrl } from '@/hooks/useUrlParams';
-import { exportCanvasPng } from '@/lib/exportPng';
+import ExportDialog from '../../components/ExportDialog/ExportDialog';
+import { exportImage } from '../../lib/exportImage';
 import styles from './Cardioid.module.css';
 
 type ColorScheme = 'cardioid' | 'rainbow' | 'plasma' | 'mono';
@@ -87,6 +88,7 @@ export default function Cardioid() {
     return idx >= 0 ? idx : null;
   });
   const [showInfo, setShowInfo] = useState(false);
+  const [showExport, setShowExport] = useState(false);
   const [copied, setCopied] = useState(false);
 
   // Mirror state to ref so animation loop always reads fresh values
@@ -231,10 +233,6 @@ export default function Cardioid() {
     setActivePreset(0);
   }, []);
 
-  const exportPng = useCallback(() => {
-    if (!canvasRef.current) return;
-    exportCanvasPng(canvasRef.current, 'cardioid.png');
-  }, []);
 
   const flashCopied = useCallback(() => {
     setCopied(true);
@@ -371,10 +369,22 @@ export default function Cardioid() {
             running={animate}
             onToggle={() => setAnimate(a => !a)}
             onReset={reset}
-            onExport={exportPng}
+            onExport={() => setShowExport(true)}
           />
         </div>
       </div>
+
+      {showExport && (
+        <ExportDialog
+          onClose={() => setShowExport(false)}
+          onDownload={({ width, height, format }) => {
+            const canvas = canvasRef.current;
+            if (!canvas) return;
+            exportImage(canvas, width, height, format, 'cardioid');
+            setShowExport(false);
+          }}
+        />
+      )}
 
       {/* ─── HUD ────────────────────────────────────────────────────────── */}
       <div className={styles.hud}>

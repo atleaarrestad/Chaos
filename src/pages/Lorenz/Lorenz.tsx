@@ -9,7 +9,8 @@ import { InfoDialog } from '@/components/InfoDialog';
 import { detectWebGL2 } from '@/lib/gpu/context';
 import { useFullscreen } from '@/hooks/useFullscreen';
 import { getStrParam, useShareUrl } from '@/hooks/useUrlParams';
-import { exportCanvasPng } from '@/lib/exportPng';
+import ExportDialog from '../../components/ExportDialog/ExportDialog';
+import { exportImage } from '../../lib/exportImage';
 import styles from './Lorenz.module.css';
 import { AttractorGPU, type AttractorGPUParams, type AttractorDerivFn } from './attractor-gpu';
 
@@ -391,6 +392,7 @@ export default function Lorenz() {
   const [colorScheme, setColorScheme] = useState<ColorScheme>('velocity');
   const [running, setRunning] = useState(true);
   const [showInfo, setShowInfo] = useState(false);
+  const [showExport, setShowExport] = useState(false);
   const [showAxes, setShowAxes] = useState(false);
   const [autoRotate, setAutoRotate] = useState(false);
   const [showPoincare, setShowPoincare] = useState(false);
@@ -480,10 +482,6 @@ export default function Lorenz() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [reset, toggleFullscreen]);
-
-  const exportPng = useCallback(() => {
-    if (canvasRef.current) exportCanvasPng(canvasRef.current, 'lorenz.png');
-  }, []);
 
   const handleShare = useCallback(() => {
     shareUrl({ a: attractorTypeId });
@@ -1370,10 +1368,22 @@ export default function Lorenz() {
           running={running}
           onToggle={() => setRunning(r => !r)}
           onReset={reset}
-          onExport={exportPng}
+          onExport={() => setShowExport(true)}
         />
         </div>
       </div>
+
+      {showExport && (
+        <ExportDialog
+          onClose={() => setShowExport(false)}
+          onDownload={({ width, height, format }) => {
+            const canvas = canvasRef.current;
+            if (!canvas) return;
+            exportImage(canvas, width, height, format, 'lorenz');
+            setShowExport(false);
+          }}
+        />
+      )}
 
       <div className={styles.hud}>
         <div className={styles.hudLeft}>

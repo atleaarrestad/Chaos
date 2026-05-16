@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Slider, Toggle, ControlPanel, ControlGroup, SimControls } from '@/components/Controls';
 import { useFullscreen } from '@/hooks/useFullscreen';
 import { useShareUrl } from '@/hooks/useUrlParams';
-import { exportCanvasPng } from '@/lib/exportPng';
+import ExportDialog from '../../components/ExportDialog/ExportDialog';
+import { exportImage } from '../../lib/exportImage';
 import styles from './Conway.module.css';
 
 // ─── Grid constants ───────────────────────────────────────────────────────────
@@ -340,6 +341,7 @@ export default function Conway() {
   const [ageColor,     setAgeColor]     = useState(true);
   const [showGraph,    setShowGraph]    = useState(true);
   const [showInfo,     setShowInfo]     = useState(false);
+  const [showExport,   setShowExport]   = useState(false);
   const [generation,   setGeneration]   = useState(0);
   const [population,   setPopulation]   = useState(0);
   const [activePreset, setActivePreset] = useState<number>(-1);
@@ -589,11 +591,6 @@ export default function Conway() {
 
   const togglePlay = useCallback(() => setPlaying(p => !p), []);
 
-  const exportPng = useCallback(() => {
-    if (!canvasRef.current) return;
-    exportCanvasPng(canvasRef.current, 'conway-game-of-life.png');
-  }, []);
-
   const flashCopied = useCallback(() => {
     setCopied(true);
     if (copiedTimeoutRef.current !== null) window.clearTimeout(copiedTimeoutRef.current);
@@ -710,7 +707,7 @@ export default function Conway() {
             running={playing}
             onToggle={togglePlay}
             onReset={handleClear}
-            onExport={exportPng}
+            onExport={() => setShowExport(true)}
           />
           <div className={styles.actionPanel}>
             <span className={styles.actionPanelLabel}>Actions</span>
@@ -837,6 +834,18 @@ export default function Conway() {
           </div>
         );
       })()}
+
+      {showExport && (
+        <ExportDialog
+          onClose={() => setShowExport(false)}
+          onDownload={({ width, height, format }) => {
+            const canvas = canvasRef.current;
+            if (!canvas) return;
+            exportImage(canvas, width, height, format, 'conway');
+            setShowExport(false);
+          }}
+        />
+      )}
 
       {/* HUD */}
       <div className={styles.hud}>

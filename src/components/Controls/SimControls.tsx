@@ -7,7 +7,7 @@ interface SimControlsProps {
   onToggle?: () => void;
   /** Called when the reset button is clicked. */
   onReset: () => void;
-  /** Called when the PNG export button is clicked. */
+  /** Called when the Export button is clicked. */
   onExport?: () => void;
   /** Disable the play/pause button (e.g. feature requires GPU). */
   toggleDisabled?: boolean;
@@ -51,10 +51,10 @@ export default function SimControls({ running, onToggle, onReset, onExport, togg
             type="button"
             className={styles.btn}
             onClick={onExport}
-            title="Export PNG"
+            title="Export image"
           >
             <span className={styles.icon}>↓</span>
-            <span className={styles.label}>PNG</span>
+            <span className={styles.label}>Export</span>
           </button>
           <span className={styles.keySpacer} aria-hidden="true" />
         </div>
