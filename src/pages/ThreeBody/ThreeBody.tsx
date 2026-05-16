@@ -99,6 +99,7 @@ interface Preset {
   desc: string;
   G: number;
   dt: number;
+  speed?: number;
   bodies: Bodies;
 }
 
@@ -126,7 +127,7 @@ const PRESETS: Preset[] = [
   {
     label: 'Pythagorean',
     desc: 'Masses 3–4–5 at rest in a right triangle — quickly becomes chaotic with near-collisions and ejections (Szebehely & Peters, 1967)',
-    G: 1, dt: 0.0005,
+    G: 1, dt: 0.0005, speed: 0.5,
     bodies: [
       { x:  1, y:  3, vx: 0, vy: 0, mass: 3 },
       { x: -2, y: -1, vx: 0, vy: 0, mass: 4 },
@@ -136,7 +137,7 @@ const PRESETS: Preset[] = [
   {
     label: 'Binary',
     desc: 'A tight binary pair with a distant intruder — the intruder falls in and disrupts the orbital dance',
-    G: 1, dt: 0.002,
+    G: 1, dt: 0.002, speed: 0.25,
     bodies: [
       { x: -0.5, y: 0, vx: 0, vy: -0.7071, mass: 1 },
       { x:  0.5, y: 0, vx: 0, vy:  0.7071, mass: 1 },
@@ -273,11 +274,13 @@ export default function ThreeBody() {
 
   const goToPreset = useCallback((idx: number) => {
     const preset = PRESETS[idx];
+    const presetSpeed = preset.speed ?? 1;
     setActivePreset(idx);
     setDt(preset.dt);
     setG(preset.G);
+    setSpeed(presetSpeed);
     setMasses(preset.bodies.map(b => b.mass) as [number, number, number]);
-    pRef.current = { ...pRef.current, dt: preset.dt, G: preset.G };
+    pRef.current = { ...pRef.current, dt: preset.dt, G: preset.G, speed: presetSpeed };
     bodiesRef.current = structuredClone(preset.bodies) as Bodies;
     clearTrails();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
