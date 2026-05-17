@@ -13,6 +13,7 @@ const Koch            = lazy(() => import('@/pages/Koch/Koch'));
 const CellularAutomata = lazy(() => import('@/pages/CellularAutomata/CellularAutomata'));
 const ThreeBody           = lazy(() => import('@/pages/ThreeBody/ThreeBody'));
 const ReactionDiffusion   = lazy(() => import('@/pages/ReactionDiffusion/ReactionDiffusion'));
+const BarnsleyFern        = lazy(() => import('@/pages/BarnsleyFern/BarnsleyFern'));
 const NotFound            = lazy(() => import('@/pages/NotFound/NotFound'));
 
 const spinnerStyle: React.CSSProperties = {
@@ -55,6 +56,7 @@ export const router = createBrowserRouter([
       { path: 'cellular-automata', element: <Lazy><CellularAutomata /></Lazy> },
       { path: 'three-body', element: <Lazy><ThreeBody /></Lazy> },
       { path: 'reaction-diffusion', element: <Lazy><ReactionDiffusion /></Lazy> },
+      { path: 'barnsley-fern', element: <Lazy><BarnsleyFern /></Lazy> },
       { path: '*', element: <Lazy><NotFound /></Lazy> },
     ],
   },

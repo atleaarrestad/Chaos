@@ -11,7 +11,8 @@ export type PreviewType =
   | 'conway'
   | 'cellular'
   | 'threebody'
-  | 'reaction';
+  | 'reaction'
+  | 'fern';
 
 type Renderer = (canvas: HTMLCanvasElement) => () => void;
 
@@ -662,6 +663,62 @@ const reactionRenderer: Renderer = (canvas) => {
   return () => cancelAnimationFrame(raf);
 };
 
+// ─── Barnsley Fern (IFS chaos game) ──────────────────────────────────────────
+
+const fernRenderer: Renderer = (canvas) => {
+  const dpr = window.devicePixelRatio || 1;
+  const W = (canvas.width  = Math.round(canvas.offsetWidth  * dpr));
+  const H = (canvas.height = Math.round(canvas.offsetHeight * dpr));
+  const ctx = canvas.getContext('2d')!;
+
+  // Barnsley Fern transforms
+  const transforms = [
+    { a: 0,     b: 0,     c: 0,     d: 0.16,  e: 0,    f: 0,    p: 0.01 },
+    { a: 0.85,  b: 0.04,  c: -0.04, d: 0.85,  e: 0,    f: 1.6,  p: 0.85 },
+    { a: 0.20,  b: -0.26, c: 0.23,  d: 0.22,  e: 0,    f: 1.6,  p: 0.07 },
+    { a: -0.15, b: 0.28,  c: 0.26,  d: 0.24,  e: 0,    f: 0.44, p: 0.07 },
+  ];
+  const total = transforms.reduce((s, t) => s + t.p, 0);
+  let acc = 0;
+  const cdf = transforms.map(t => (acc += t.p / total, acc));
+
+  const palette: [number, number, number][] = [
+    [22, 101, 52], [34, 197, 94], [134, 239, 172], [187, 247, 208],
+  ];
+
+  const xMin = -2.5, xMax = 2.5, yMin = 0, yMax = 10;
+  const cx = (xMin + xMax) / 2;
+  const cy = (yMin + yMax) / 2;
+  const scale = 0.88 * Math.min(W / (xMax - xMin), H / (yMax - yMin));
+
+  const img = ctx.createImageData(W, H);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) { d[i] = 7; d[i+1] = 7; d[i+2] = 18; d[i+3] = 255; }
+
+  let x = 0, y = 0;
+  const N = 80_000;
+  for (let i = 0; i < N + 20; i++) {
+    const r = Math.random();
+    let ti = 0;
+    while (ti < cdf.length - 1 && r > cdf[ti]) ti++;
+    const t = transforms[ti];
+    const nx = t.a * x + t.b * y + t.e;
+    const ny = t.c * x + t.d * y + t.f;
+    x = nx; y = ny;
+    if (i < 20) continue;
+    const sx = Math.round(W / 2 + (x - cx) * scale);
+    const sy = Math.round(H / 2 - (y - cy) * scale);
+    if (sx >= 0 && sx < W && sy >= 0 && sy < H) {
+      const idx = (sy * W + sx) << 2;
+      const [r2, g, b] = palette[ti % palette.length];
+      d[idx] = r2; d[idx+1] = g; d[idx+2] = b;
+    }
+  }
+
+  ctx.putImageData(img, 0, 0);
+  return () => {};
+};
+
 // ─── Registry ────────────────────────────────────────────────────────────────
 
 const RENDERERS: Record<PreviewType, Renderer> = {
@@ -675,6 +732,7 @@ const RENDERERS: Record<PreviewType, Renderer> = {
   cellular:    cellularRenderer,
   threebody:   threebodyRenderer,
   reaction:    reactionRenderer,
+  fern:        fernRenderer,
 };
 
 // ─── Component ───────────────────────────────────────────────────────────────

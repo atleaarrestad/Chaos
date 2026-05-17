@@ -93,6 +93,15 @@ const EXPLORATIONS: Exploration[] = [
     previewType: 'reaction',
     color: 'var(--col-reaction)',
   },
+  {
+    path: '/barnsley-fern',
+    title: 'Barnsley Fern',
+    category: 'IFS / Chaos Game',
+    description:
+      'Five Iterated Function Systems rendered via the chaos game: Barnsley Fern, Sierpiński Triangle, Heighway Dragon, Lévy C Curve, and Fractal Tree. Organic self-similarity from a handful of affine transforms.',
+    previewType: 'fern',
+    color: 'var(--col-fern)',
+  },
 ];
 
 export default function Home() {
