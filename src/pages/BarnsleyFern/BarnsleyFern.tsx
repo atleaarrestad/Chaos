@@ -10,8 +10,8 @@ import { getNumParam, getStrParam, useShareUrl } from '@/hooks/useUrlParams';
 import ExportDialog from '../../components/ExportDialog/ExportDialog';
 import { downloadCanvas } from '../../lib/exportImage';
 import {
-  PRESETS, COLOR_PALETTES, BG_COLOR, chaosStep, ifsToScreen,
-  renderIntoImageData, makeDarkImageData,
+  PRESETS, COLOR_PALETTES, chaosStep, ifsToScreen,
+  renderIntoImageData, makeDarkImageData, makeCountBuffers, countsToImageData,
   type ColorSchemeId, type RenderViewport,
 } from './barnsley-fern';
 import styles from './BarnsleyFern.module.css';
@@ -110,19 +110,23 @@ export default function BarnsleyFern() {
   const [infoCollapsed,  setInfoCollapsed]  = useState(false);
 
   // ─── Refs ────────────────────────────────────────────────────────────────
-  const canvasRef      = useRef<HTMLCanvasElement>(null);
-  const containerRef   = useRef<HTMLDivElement>(null);
-  const rafRef         = useRef(0);
-  const needsClearRef  = useRef(false);
-  const imgDataRef     = useRef<ImageData | null>(null);
-  const fernXRef       = useRef(0);
-  const fernYRef       = useRef(0);
-  const totalPtsRef    = useRef(0);
-  const pendingSizeRef = useRef<{ w: number; h: number } | null>(null);
-  const dragRef        = useRef<{ x: number; y: number } | null>(null);
-  const copiedTimerRef = useRef<number | null>(null);
-  const ctxRef         = useRef<CanvasRenderingContext2D | null>(null);
-  const clearTimerRef  = useRef<number | null>(null);
+  const canvasRef       = useRef<HTMLCanvasElement>(null);
+  const containerRef    = useRef<HTMLDivElement>(null);
+  const rafRef          = useRef(0);
+  const needsClearRef   = useRef(false);
+  const needsRedrawRef  = useRef(false);
+  const imgDataRef      = useRef<ImageData | null>(null);
+  const countsRef       = useRef<Uint32Array | null>(null);
+  const transformIdxRef = useRef<Uint8Array | null>(null);
+  const maxCountRef     = useRef(0);
+  const fernXRef        = useRef(0);
+  const fernYRef        = useRef(0);
+  const totalPtsRef     = useRef(0);
+  const pendingSizeRef  = useRef<{ w: number; h: number } | null>(null);
+  const dragRef         = useRef<{ x: number; y: number } | null>(null);
+  const draggingRef     = useRef(false);
+  const copiedTimerRef  = useRef<number | null>(null);
+  const ctxRef          = useRef<CanvasRenderingContext2D | null>(null);
 
   // Mirror mutable state into a ref so the RAF loop always sees fresh values.
   const pRef = useRef({
@@ -143,8 +147,9 @@ export default function BarnsleyFern() {
   const { isFullscreen, toggleFullscreen } = useFullscreen(containerRef);
   const { shareUrl } = useShareUrl();
 
-  // Trigger a full clear when the preset or colour scheme changes.
-  useEffect(() => { needsClearRef.current = true; }, [presetIdx, colorScheme]);
+  // Trigger a full clear when the preset changes; color-only change just redraws from counts.
+  useEffect(() => { needsClearRef.current = true; }, [presetIdx]);
+  useEffect(() => { needsRedrawRef.current = true; }, [colorScheme]);
 
   // ─── RAF render loop ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -164,10 +169,16 @@ export default function BarnsleyFern() {
     function clearCanvas() {
       const c = getCtx();
       if (!c || !canvas) return;
+      const W = canvas.width;
+      const H = canvas.height;
+      const { counts, txIdx } = makeCountBuffers(W, H);
+      countsRef.current       = counts;
+      transformIdxRef.current = txIdx;
+      maxCountRef.current     = 0;
       imgDataRef.current = makeDarkImageData(c);
       c.putImageData(imgDataRef.current, 0, 0);
-      fernXRef.current = 0;
-      fernYRef.current = 0;
+      fernXRef.current    = 0;
+      fernYRef.current    = 0;
       totalPtsRef.current = 0;
       setTotalPts(0);
     }
@@ -183,7 +194,9 @@ export default function BarnsleyFern() {
           canvas!.width  = pending.w;
           canvas!.height = pending.h;
           ctx = null;
-          imgDataRef.current = null;
+          imgDataRef.current      = null;
+          countsRef.current       = null;
+          transformIdxRef.current = null;
         }
         needsClearRef.current = true;
       }
@@ -199,14 +212,20 @@ export default function BarnsleyFern() {
 
       // While paused, or after reaching max density, just idle.
       if (!building || totalPtsRef.current >= MAX_POINTS) {
+        if (needsRedrawRef.current && imgDataRef.current && countsRef.current && transformIdxRef.current) {
+          needsRedrawRef.current = false;
+          countsToImageData(imgDataRef.current, countsRef.current, transformIdxRef.current, COLOR_PALETTES[pRef.current.colorScheme], maxCountRef.current);
+          ctx!.putImageData(imgDataRef.current, 0, 0);
+        }
         rafRef.current = requestAnimationFrame(frame);
         return;
       }
 
-      if (!imgDataRef.current) clearCanvas();
+      if (!imgDataRef.current || !countsRef.current || !transformIdxRef.current) clearCanvas();
 
       const img    = imgDataRef.current!;
-      const data   = img.data;
+      const counts = countsRef.current!;
+      const txIdx  = transformIdxRef.current!;
       const W      = canvas!.width;
       const H      = canvas!.height;
       const palette = COLOR_PALETTES[cs];
@@ -218,23 +237,32 @@ export default function BarnsleyFern() {
 
       let x = fernXRef.current;
       let y = fernYRef.current;
+      let mc = maxCountRef.current;
 
       for (let i = 0; i < N; i++) {
         const [nx, ny, ti] = chaosStep(x, y, preset);
         x = nx; y = ny;
         const [sx, sy] = ifsToScreen(x, y, preset, W, H, vp);
         if (sx >= 0 && sx < W && sy >= 0 && sy < H) {
-          const idx = (sy * W + sx) << 2;
-          const [r, g, b] = palette[ti % palette.length];
-          data[idx] = r; data[idx + 1] = g; data[idx + 2] = b;
+          const pidx = sy * W + sx;
+          const c = ++counts[pidx];
+          if (c > mc) mc = c;
+          txIdx[pidx] = ti;
         }
       }
 
-      fernXRef.current = x;
-      fernYRef.current = y;
+      fernXRef.current    = x;
+      fernYRef.current    = y;
+      maxCountRef.current = mc;
       totalPtsRef.current += N;
 
-      ctx!.putImageData(img, 0, 0);
+      // Rebuild the image from density counts and flush to canvas.
+      // Skip during drag — the viewport is changing; a clean rebuild follows on pointer-up.
+      if (!draggingRef.current) {
+        needsRedrawRef.current = false;
+        countsToImageData(img, counts, txIdx, palette, mc);
+        ctx!.putImageData(img, 0, 0);
+      }
 
       // Update the displayed counter every ~500k points to avoid React overhead.
       if (totalPtsRef.current % 500_000 < N) {
@@ -270,6 +298,7 @@ export default function BarnsleyFern() {
 
   // ─── Pan & zoom ──────────────────────────────────────────────────────────
   const onPointerDown = useCallback((e: React.PointerEvent) => {
+    draggingRef.current = true;
     dragRef.current = { x: e.clientX, y: e.clientY };
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
   }, []);
@@ -280,34 +309,9 @@ export default function BarnsleyFern() {
     const dy = e.clientY - dragRef.current.y;
     dragRef.current = { x: e.clientX, y: e.clientY };
 
-    const canvas = canvasRef.current;
-    const ctx = ctxRef.current;
     const rect = (e.target as HTMLElement).getBoundingClientRect();
-
-    // ifsToScreen: sy = H/2 - … - panY*H/2  →  positive panY moves the fractal UP.
-    // Dragging down (dy > 0) should move the fractal down, so we subtract dy.
     const newPanX = pRef.current.panX + (2 * dx) / rect.width;
     const newPanY = pRef.current.panY - (2 * dy) / rect.height;
-
-    // Shift accumulated pixels by the drag delta (canvas-pixel units) instead of
-    // clearing, so the rendered points are preserved while new ones fill in.
-    if (canvas && ctx && imgDataRef.current) {
-      const W = canvas.width;
-      const H = canvas.height;
-      const cdx = dx * (W / rect.width);
-      const cdy = dy * (H / rect.height);
-      const tmp = document.createElement('canvas');
-      tmp.width = W; tmp.height = H;
-      tmp.getContext('2d')!.putImageData(imgDataRef.current, 0, 0);
-      const [br, bg, bb] = BG_COLOR;
-      ctx.fillStyle = `rgb(${br},${bg},${bb})`;
-      ctx.fillRect(0, 0, W, H);
-      ctx.save();
-      ctx.setTransform(1, 0, 0, 1, cdx, cdy);
-      ctx.drawImage(tmp, 0, 0);
-      ctx.restore();
-      imgDataRef.current = ctx.getImageData(0, 0, W, H);
-    }
 
     pRef.current.panX = newPanX;
     pRef.current.panY = newPanY;
@@ -315,7 +319,11 @@ export default function BarnsleyFern() {
     setPanY(newPanY);
   }, []);
 
-  const onPointerUp = useCallback(() => { dragRef.current = null; }, []);
+  const onPointerUp = useCallback(() => {
+    if (dragRef.current) needsClearRef.current = true;
+    draggingRef.current = false;
+    dragRef.current = null;
+  }, []);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -323,12 +331,10 @@ export default function BarnsleyFern() {
     const handler = (e: WheelEvent) => {
       e.preventDefault();
       const canvas = canvasRef.current;
-      const ctx = ctxRef.current;
-      if (!canvas || !ctx) return;
+      if (!canvas) return;
 
       const W = canvas.width;
       const H = canvas.height;
-      // Mouse in canvas pixel space (accounting for DPR)
       const rect = canvas.getBoundingClientRect();
       const mx = (e.clientX - rect.left) * (W / rect.width);
       const my = (e.clientY - rect.top)  * (H / rect.height);
@@ -339,43 +345,13 @@ export default function BarnsleyFern() {
       const f = newZoom / oldZoom;
 
       // Zoom-to-mouse: adjust pan so the IFS point under the cursor stays fixed.
-      // In "half-canvas" units: nx = mx/(W/2) - 1, ny = my/(H/2) - 1
       const nx = mx / (W / 2) - 1;
       const ny = my / (H / 2) - 1;
       const newPanX = nx * (1 - f) + pRef.current.panX * f;
       const newPanY = ny * (f - 1) + pRef.current.panY * f;
 
-      // Zoom-in: pixel-transform preview while scrolling, sharp redraw 250 ms after stopping.
-      // Zoom-out: clear immediately so old pixels don't layer over the new viewport.
-      if (f > 1 && imgDataRef.current) {
-        const tmp = document.createElement('canvas');
-        tmp.width = W; tmp.height = H;
-        tmp.getContext('2d')!.putImageData(imgDataRef.current, 0, 0);
-        const [br, bg, bb] = BG_COLOR;
-        ctx.fillStyle = `rgb(${br},${bg},${bb})`;
-        ctx.fillRect(0, 0, W, H);
-        ctx.save();
-        ctx.setTransform(f, 0, 0, f, (1 - f) * mx, (1 - f) * my);
-        ctx.drawImage(tmp, 0, 0);
-        ctx.restore();
-        imgDataRef.current = ctx.getImageData(0, 0, W, H);
+      needsClearRef.current = true;
 
-        if (clearTimerRef.current !== null) window.clearTimeout(clearTimerRef.current);
-        clearTimerRef.current = window.setTimeout(() => {
-          needsClearRef.current = true;
-          clearTimerRef.current = null;
-        }, 250);
-      } else {
-        // Cancel any in-flight debounce and clear immediately.
-        if (clearTimerRef.current !== null) {
-          window.clearTimeout(clearTimerRef.current);
-          clearTimerRef.current = null;
-        }
-        needsClearRef.current = true;
-      }
-
-      // Update pRef immediately — the RAF loop reads these on its very next frame,
-      // before React has a chance to re-render, preventing any stale-viewport frame.
       pRef.current.zoom = newZoom;
       pRef.current.panX = newPanX;
       pRef.current.panY = newPanY;
@@ -409,7 +385,6 @@ export default function BarnsleyFern() {
 
   useEffect(() => () => {
     if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current);
-    if (clearTimerRef.current  !== null) window.clearTimeout(clearTimerRef.current);
   }, []);
 
   // ─── Keyboard shortcuts ──────────────────────────────────────────────────

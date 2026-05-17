@@ -144,7 +144,7 @@ export function ifsToScreen(
 export const BG_COLOR: [number, number, number] = [7, 7, 18];
 
 /**
- * Renders `iterations` chaos-game points into `imgData` in-place.
+ * Renders `iterations` chaos-game points into `imgData` using density accumulation.
  * Call ctx.putImageData(imgData, 0, 0) afterwards to display.
  */
 export function renderIntoImageData(
@@ -155,8 +155,10 @@ export function renderIntoImageData(
   iterations: number,
   warmup = 20,
 ): void {
-  const { data, width: W, height: H } = imgData;
+  const { width: W, height: H } = imgData;
+  const { counts, txIdx } = makeCountBuffers(W, H);
   let x = 0, y = 0;
+  let maxCount = 1;
 
   for (let i = 0; i < iterations + warmup; i++) {
     const [nx, ny, ti] = chaosStep(x, y, preset);
@@ -165,11 +167,14 @@ export function renderIntoImageData(
 
     const [sx, sy] = ifsToScreen(x, y, preset, W, H, vp);
     if (sx >= 0 && sx < W && sy >= 0 && sy < H) {
-      const idx = (sy * W + sx) << 2;
-      const [r, g, b] = palette[ti % palette.length];
-      data[idx] = r; data[idx + 1] = g; data[idx + 2] = b;
+      const pidx = sy * W + sx;
+      const c = ++counts[pidx];
+      if (c > maxCount) maxCount = c;
+      txIdx[pidx] = ti;
     }
   }
+
+  countsToImageData(imgData, counts, txIdx, palette, maxCount);
 }
 
 /** Creates a fresh ImageData pre-filled with the background colour. */
@@ -181,4 +186,41 @@ export function makeDarkImageData(ctx: CanvasRenderingContext2D): ImageData {
     d[i] = BG_COLOR[0]; d[i + 1] = BG_COLOR[1]; d[i + 2] = BG_COLOR[2]; d[i + 3] = 255;
   }
   return img;
+}
+
+/** Creates zero-initialised hit-count and transform-index buffers for W×H pixels. */
+export function makeCountBuffers(W: number, H: number): { counts: Uint32Array; txIdx: Uint8Array } {
+  return { counts: new Uint32Array(W * H), txIdx: new Uint8Array(W * H) };
+}
+
+/**
+ * Converts per-pixel hit counts into RGBA using log-scale brightness mapping.
+ * Dense pixels glow at full palette colour; sparse pixels fade toward the background.
+ * maxCount should be the current maximum value in `counts` (tracked incrementally).
+ */
+export function countsToImageData(
+  imgData: ImageData,
+  counts: Uint32Array,
+  txIdx: Uint8Array,
+  palette: [number, number, number][],
+  maxCount: number,
+): void {
+  const { data, width: W, height: H } = imgData;
+  const len = W * H;
+  const logMax = Math.log(1 + maxCount);
+  const [br, bg, bb] = BG_COLOR;
+  for (let i = 0; i < len; i++) {
+    const idx = i << 2;
+    const c = counts[i];
+    if (c === 0) {
+      data[idx] = br; data[idx + 1] = bg; data[idx + 2] = bb; data[idx + 3] = 255;
+    } else {
+      const t = Math.log(1 + c) / logMax;
+      const col = palette[txIdx[i] % palette.length];
+      data[idx]     = (col[0] * t + br * (1 - t)) | 0;
+      data[idx + 1] = (col[1] * t + bg * (1 - t)) | 0;
+      data[idx + 2] = (col[2] * t + bb * (1 - t)) | 0;
+      data[idx + 3] = 255;
+    }
+  }
 }
