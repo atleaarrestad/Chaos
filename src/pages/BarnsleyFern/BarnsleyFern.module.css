@@ -179,3 +179,109 @@
 }
 
 .hudBtn:hover { color: var(--col-fern); }
+
+/* ─── Info overlay (top-left canvas overlay) ─────────────────────────────── */
+
+.infoOverlay {
+  position: absolute;
+  top: var(--space-4);
+  left: var(--space-4);
+  max-width: 280px;
+  padding: var(--space-3) var(--space-4);
+  background: rgba(7, 7, 18, 0.82);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  z-index: 5;
+}
+
+.infoOverlayHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.infoOverlayName {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.infoOverlayDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--col-fern);
+  box-shadow: 0 0 6px var(--col-fern);
+}
+
+.infoOverlayToggle {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  padding: 0 var(--space-1);
+  line-height: 1;
+  flex-shrink: 0;
+  transition: color var(--ease-fast);
+}
+
+.infoOverlayToggle:hover { color: rgba(255, 255, 255, 0.75); }
+
+.infoOverlayMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.categoryBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  background: color-mix(in srgb, var(--col-fern) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--col-fern) 35%, transparent);
+  color: var(--col-fern);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.notationBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.88);
+  font-family: var(--font-mono);
+}
+
+.infoOverlayRules {
+  margin: 0;
+  padding: 0 0 0 var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.infoOverlayRule {
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.78);
+  font-family: var(--font-sans);
+}
+

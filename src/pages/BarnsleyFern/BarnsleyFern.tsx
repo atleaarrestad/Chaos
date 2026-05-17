@@ -19,6 +19,58 @@ import styles from './BarnsleyFern.module.css';
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const DEFAULT_PRESET = 0;
+
+const PRESET_INFO: Record<string, { category: string; maps: number; rules: string[] }> = {
+  barnsley: {
+    category: 'IFS Fractal',
+    maps: 4,
+    rules: [
+      'Drop a dot anywhere. Each step randomly picks one of 4 rules. Plot it. Repeat millions of times.',
+      'Rule 1 (85%): shrink and tilt the dot slightly upward. Draws the leafy body.',
+      'Rule 2 (7%): rotate and shrink the dot toward the left. Draws the left leaflet.',
+      'Rule 3 (7%): rotate and shrink the dot toward the right. Draws the right leaflet.',
+      'Rule 4 (1%): flatten the dot straight down to the base. Draws the stem.',
+    ],
+  },
+  sierpinski: {
+    category: 'IFS Fractal',
+    maps: 3,
+    rules: [
+      'Drop a dot anywhere. Each step picks a random corner and jumps halfway there. Plot it. Repeat.',
+      'Rule 1 (33%): jump halfway toward the bottom-left corner',
+      'Rule 2 (33%): jump halfway toward the bottom-right corner',
+      'Rule 3 (33%): jump halfway toward the top corner',
+      'The triangular holes appear by themselves: no rule ever lands inside them',
+    ],
+  },
+  dragon: {
+    category: 'IFS Fractal',
+    maps: 2,
+    rules: [
+      'Imagine folding a strip of paper in half over and over, always the same direction',
+      'Then unfold it so every crease is a 90 degree angle',
+    ],
+  },
+  levy: {
+    category: 'IFS Fractal',
+    maps: 2,
+    rules: [
+      'Drop a dot anywhere. Each step randomly picks one of 2 rules. Plot it. Repeat millions of times.',
+      'Rule 1 (50%): rotate the dot 45 degrees left and move it halfway toward the bottom-left corner',
+      'Rule 2 (50%): rotate the dot 45 degrees right and move it halfway toward the bottom-right corner',
+    ],
+  },
+  tree: {
+    category: 'IFS Fractal',
+    maps: 3,
+    rules: [
+      'Drop a dot anywhere. Each step randomly picks one of 3 rules. Plot it. Repeat millions of times.',
+      'Rule 1 (5%): pull the dot straight down to the center line and halve its height. Builds the trunk.',
+      'Rule 2 (47.5%): rotate the dot 45 degrees left and shrink it slightly. Grows the left branches.',
+      'Rule 3 (47.5%): rotate the dot 45 degrees right and shrink it slightly. Grows the right branches.',
+    ],
+  },
+};
 const DEFAULT_COLOR: ColorSchemeId = 'fern';
 const DEFAULT_ITERS = 30_000;
 const MAX_POINTS = 15_000_000;
@@ -52,9 +104,10 @@ export default function BarnsleyFern() {
   const [panX,         setPanX]         = useState(0);
   const [panY,         setPanY]         = useState(0);
   const [totalPts,     setTotalPts]     = useState(0);
-  const [showInfo,     setShowInfo]     = useState(false);
-  const [showExport,   setShowExport]   = useState(false);
-  const [copied,       setCopied]       = useState(false);
+  const [showInfo,       setShowInfo]       = useState(false);
+  const [showExport,     setShowExport]     = useState(false);
+  const [copied,         setCopied]         = useState(false);
+  const [infoCollapsed,  setInfoCollapsed]  = useState(false);
 
   // ─── Refs ────────────────────────────────────────────────────────────────
   const canvasRef      = useRef<HTMLCanvasElement>(null);
@@ -408,6 +461,41 @@ export default function BarnsleyFern() {
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
       />
+
+      {/* ─── Info overlay ─────────────────────────────────────────────── */}
+      {(() => {
+        const info = PRESET_INFO[preset.id];
+        return info ? (
+          <div className={styles.infoOverlay}>
+            <div className={styles.infoOverlayHeader}>
+              <div className={styles.infoOverlayName}>
+                <span className={styles.infoOverlayDot} />
+                {preset.name}
+              </div>
+              <button
+                className={styles.infoOverlayToggle}
+                onClick={() => setInfoCollapsed(v => !v)}
+                aria-label={infoCollapsed ? 'Expand' : 'Collapse'}
+              >
+                {infoCollapsed ? '▸' : '▾'}
+              </button>
+            </div>
+            {!infoCollapsed && (
+              <>
+                <div className={styles.infoOverlayMeta}>
+                  <span className={styles.categoryBadge}>{info.category}</span>
+                  <span className={styles.notationBadge}>{info.maps} maps</span>
+                </div>
+                <ul className={styles.infoOverlayRules}>
+                  {info.rules.map((rule, i) => (
+                    <li key={i} className={styles.infoOverlayRule}>{rule}</li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </div>
+        ) : null;
+      })()}
 
       {/* ─── Sidebar ──────────────────────────────────────────────────── */}
       <div className={styles.sidebar}>
