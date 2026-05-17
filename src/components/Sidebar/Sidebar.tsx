@@ -5,6 +5,7 @@ interface NavItem {
   path: string;
   label: string;
   symbol: string;
+  color?: string;
 }
 
 interface NavSection {
@@ -16,36 +17,36 @@ const NAV: NavSection[] = [
   {
     section: 'Attractors',
     items: [
-      { path: '/lorenz',          label: 'Strange Attractors', symbol: '∿' },
-      { path: '/double-pendulum', label: 'Double Pendulum',    symbol: 'g' },
-      { path: '/three-body',      label: 'Three Body Problem', symbol: '⊙' },
+      { path: '/lorenz',          label: 'Strange Attractors', symbol: '🌀', color: 'var(--col-lorenz)' },
+      { path: '/double-pendulum', label: 'Double Pendulum',    symbol: '⇌',  color: 'var(--col-pendulum)' },
+      { path: '/three-body',      label: 'Three Body Problem', symbol: '🪐', color: 'var(--col-three-body)' },
     ],
   },
   {
     section: 'Fractals',
     items: [
-      { path: '/mandelbrot',    label: 'Mandelbrot Set',  symbol: '∞' },
-      { path: '/koch',          label: 'Koch Snowflake',  symbol: '❄' },
-      { path: '/barnsley-fern', label: 'Barnsley Fern',   symbol: '🌿' },
+      { path: '/mandelbrot',    label: 'Mandelbrot Set', symbol: '∞',  color: 'var(--col-mandelbrot)' },
+      { path: '/koch',          label: 'Koch Snowflake', symbol: '❄️', color: 'var(--col-koch)' },
+      { path: '/barnsley-fern', label: 'Barnsley Fern',  symbol: '🌿', color: 'var(--col-fern)' },
     ],
   },
   {
     section: 'Curves & Diagrams',
     items: [
-      { path: '/cardioid', label: 'Cardioid', symbol: 'θ' },
-      { path: '/bifurcation', label: 'Bifurcation', symbol: 'δ' },
+      { path: '/cardioid',    label: 'Cardioid',     symbol: '♥', color: 'var(--col-cardioid)' },
+      { path: '/bifurcation', label: 'Bifurcation',  symbol: '⌥', color: 'var(--col-bifurcation)' },
     ],
   },
   {
     section: 'Cellular Automata',
     items: [
-      { path: '/cellular-automata', label: 'Cellular Automata', symbol: '🔲' },
+      { path: '/cellular-automata', label: 'Cellular Automata', symbol: '⊞', color: 'var(--col-ca)' },
     ],
   },
   {
     section: 'Emergence',
     items: [
-      { path: '/reaction-diffusion', label: 'Reaction Diffusion', symbol: '⬡' },
+      { path: '/reaction-diffusion', label: 'Reaction Diffusion', symbol: '⬡', color: 'var(--col-reaction)' },
     ],
   },
 ];
@@ -66,14 +67,14 @@ export default function Sidebar() {
             [styles.link, isActive ? styles.active : ''].join(' ')
           }
         >
-          <span className={styles.symbol}>⌂</span>
+          <span className={styles.symbol}>🏠</span>
           Home
         </NavLink>
 
         {NAV.map(({ section, items }) => (
           <div key={section} className={styles.group}>
             <span className={styles.sectionLabel}>{section}</span>
-            {items.map(({ path, label, symbol }) => (
+            {items.map(({ path, label, symbol, color }) => (
               <NavLink
                 key={path}
                 to={path}
@@ -81,7 +82,7 @@ export default function Sidebar() {
                   [styles.link, isActive ? styles.active : ''].join(' ')
                 }
               >
-                <span className={styles.symbol}>{symbol}</span>
+                <span className={styles.symbol} style={color ? { color } : undefined}>{symbol}</span>
                 {label}
               </NavLink>
             ))}
